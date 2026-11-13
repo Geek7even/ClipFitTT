@@ -13,6 +13,18 @@ import install
 
 
 class InstallerTests(unittest.TestCase):
+    def test_beta_workflow_retains_full_version_with_numeric_apple_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'VERSION').write_text('0.9.1-beta.1\n')
+            with mock.patch.object(build_service, 'ROOT', root):
+                workflow = build_service.build(root / 'generated', root / 'app', sys.executable)
+            with (workflow / 'Contents/Info.plist').open('rb') as handle:
+                info = plistlib.load(handle)
+            self.assertEqual(info['CFBundleShortVersionString'], '0.9.1')
+            self.assertEqual(info['ClipFitTTVersion'], '0.9.1-beta.1')
+            self.assertEqual(info['ClipFitTTDisplayVersion'], 'ClipFitTT Beta 0.9.1')
+
     def test_workflow_uses_supplied_python_and_install_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

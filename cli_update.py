@@ -32,8 +32,9 @@ def binary_version(binary):
 
 
 def request(url):
+    project_version = Path(__file__).with_name('VERSION').read_text().strip()
     return urllib.request.Request(url, headers={
-        'User-Agent': 'ClipFitTT/1.0.0', 'Accept': 'application/vnd.github+json'})
+        'User-Agent': f'ClipFitTT/{project_version}', 'Accept': 'application/vnd.github+json'})
 
 
 def latest_release():

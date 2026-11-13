@@ -161,6 +161,8 @@ def install(args):
             subprocess.run(['/System/Library/CoreServices/pbs', '-update'], check=True, timeout=15)
         except (OSError, subprocess.SubprocessError) as error:
             print(f'文件已安装，系统服务刷新未完成：{error}。请注销后重新登录以刷新菜单。', file=sys.stderr)
+    version = (ROOT / 'VERSION').read_text().strip()
+    print(f'{build_service.display_version(version)}（{version}）')
     print(f'已安装：{services / (build_service.NAME + ".workflow")}\n程序：{destination}')
     print('安装路径仅保存在本机生成文件中；无需 sudo。')
 

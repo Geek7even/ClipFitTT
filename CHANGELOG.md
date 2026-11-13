@@ -1,11 +1,12 @@
 # Changelog
 
-## 1.0.0 — 2026-11-13
+## 0.9.1-beta.1 — 2026-11-13
 
+- First beta package, displayed as ClipFitTT Beta 0.9.1.
 - Project name: ClipFitTT; use case: preparing videos for TeamTalk mobile preview.
 - English project/delivery paths, branded Finder service and CLI preset.
 - README/project description explicitly disclose AI-only programming.
-- First source-only public release of the macOS Finder compression workflow.
+- Source-only macOS Finder compression workflow prepared for public beta testing.
 - Same-source dimensions/frame rate, H.264 MP4 output below decimal 100 MB.
 - Small H.264 inputs are remuxed; oversized remux results fall back to encoding.
 - SMB-compatible, non-overwriting saves with size/SHA-256 validation and recovery.

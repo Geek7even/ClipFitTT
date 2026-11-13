@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -62,11 +63,19 @@ def main():
         assert recovery.read_text() == 'recovery data'
         config = json.loads((app / 'runtime_config.json').read_text())
         assert config['ffmpeg'] == ffmpeg
-        assert len(list(services.glob('*.workflow'))) == 1
+        workflows = list(services.glob('*.workflow'))
+        assert len(workflows) == 1
+        version = (app / 'VERSION').read_text().strip()
+        with (workflows[0] / 'Contents/Info.plist').open('rb') as handle:
+            info = plistlib.load(handle)
+        assert info['CFBundleShortVersionString'] == version.partition('-')[0]
+        assert info['ClipFitTTVersion'] == version
+        assert module.cli_update.request(module.cli_update.RELEASE_API).get_header('User-agent') == f'ClipFitTT/{version}'
         assert list((app / 'logs').glob('*__process__*.log'))
         print('PASS: isolated install/reinstall, runtime dependency paths, generated workflow,')
         print('H.264 remux packet identity, non-H.264 conversion, size/geometry/frame checks,')
-        print('timestamped logs, and recovery retention. No service registration/network request.')
+        print('timestamped logs, recovery retention, and workflow/User-Agent version metadata.')
+        print('No service registration or network request.')
 
 
 if __name__ == '__main__':

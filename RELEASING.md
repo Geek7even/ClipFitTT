@@ -1,5 +1,10 @@
 # Publishing a ClipFitTT source release
 
+Current release: **ClipFitTT Beta 0.9.1**, technical version **0.9.1-beta.1**.
+Treat this package as a pre-release. The complete version is read from VERSION;
+the workflow's numeric Apple version field uses 0.9.1, with the complete beta
+identifier retained separately in ClipFitTTVersion.
+
 1. Review VERSION, CHANGELOG.md, README.md, DESCRIPTION.txt, COPYRIGHT, and THIRD_PARTY_NOTICES.md.
 2. Run unit tests and the optional macOS smoke test.
 3. Run `python3 tools/check_release.py`, then inspect `git diff --cached` and
@@ -19,7 +24,7 @@ git config --local user.email 'YOUR_GITHUB_NOREPLY_EMAIL'
 git add .
 git diff --cached --stat
 git diff --cached
-git commit -m 'Initial source release v1.0.0'
+git commit -m 'Prepare ClipFitTT 0.9.1-beta.1'
 git remote add origin https://github.com/YOUR_ACCOUNT/clipfittt.git
 git push -u origin main
 ```
@@ -27,11 +32,14 @@ git push -u origin main
 Optional release tag, after the initial push:
 
 ```sh
-git tag -a v1.0.0 -m 'Source release v1.0.0'
-git push origin v1.0.0
-git archive --format=zip --prefix=clipfittt-1.0.0/ \
-  --output=../clipfittt-1.0.0-source.zip v1.0.0
+git tag -a v0.9.1-beta.1 -m 'ClipFitTT Beta 0.9.1'
+git push origin v0.9.1-beta.1
+git archive --format=zip --prefix=clipfittt-0.9.1-beta.1/ \
+  --output=../clipfittt-0.9.1-beta.1-source.zip v0.9.1-beta.1
 ```
+
+If the local tag already exists, verify its target before pushing it; do not
+recreate or overwrite it. Existing local development history is retained.
 
 Publish source archives only. Do not attach locally downloaded HandBrakeCLI,
 FFmpeg binaries, DMGs, logs, generated workflows, runtime configuration, videos,

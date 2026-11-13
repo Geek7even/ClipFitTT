@@ -3,6 +3,7 @@
 """Generate the user-specific ClipFitTT Finder service at installation time."""
 from pathlib import Path
 import plistlib
+import re
 import shlex
 import sys
 import uuid
@@ -13,7 +14,16 @@ MENU_NAME = 'ClipFitTT — 压缩视频至100MB'
 DEFAULT_APP_DIR = Path.home() / 'Library/Application Support/ClipFitTT'
 
 
+def display_version(version):
+    base, _, prerelease = version.partition('-')
+    return f'{NAME} Beta {base}' if prerelease.startswith('beta.') else f'{NAME} {version}'
+
+
 def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
+    version = (ROOT / 'VERSION').read_text().strip()
+    base_version = version.partition('-')[0]
+    if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', base_version):
+        raise ValueError('VERSION 必须具有有效的三段数字基础版本。')
     python = str(Path(python_executable or sys.executable).resolve())
     app_dir = Path(app_dir).expanduser().absolute()
     workflow = Path(output_dir) / (NAME + '.workflow')
@@ -38,7 +48,9 @@ def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
     info = {
         'CFBundleIdentifier': 'local.clipfittt.finder100mb',
         'CFBundleName': NAME,
-        'CFBundleShortVersionString': (ROOT / 'VERSION').read_text().strip(),
+        'CFBundleShortVersionString': base_version,
+        'ClipFitTTVersion': version,
+        'ClipFitTTDisplayVersion': display_version(version),
         'NSServices': [{'NSMenuItem': {'default': MENU_NAME}, 'NSMessage': 'runWorkflowAsService',
                         'NSRequiredContext': {'NSApplicationIdentifier': 'com.apple.finder'},
                         'NSSendFileTypes': ['public.mpeg-4', 'com.apple.quicktime-movie']}],
