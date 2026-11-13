@@ -1,4 +1,4 @@
-# Privacy
+# ClipFitTT privacy
 
 ## Local video processing
 

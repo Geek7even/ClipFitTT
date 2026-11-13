@@ -1,6 +1,6 @@
-# Publishing a source release
+# Publishing a ClipFitTT source release
 
-1. Review VERSION, CHANGELOG.md, README.md, COPYRIGHT, and THIRD_PARTY_NOTICES.md.
+1. Review VERSION, CHANGELOG.md, README.md, DESCRIPTION.txt, COPYRIGHT, and THIRD_PARTY_NOTICES.md.
 2. Run unit tests and the optional macOS smoke test.
 3. Run `python3 tools/check_release.py`, then inspect `git diff --cached` and
    `git diff --cached --stat`. Ignore rules do not remove files already tracked.
@@ -20,7 +20,7 @@ git add .
 git diff --cached --stat
 git diff --cached
 git commit -m 'Initial source release v1.0.0'
-git remote add origin https://github.com/YOUR_ACCOUNT/finder-video-compressor.git
+git remote add origin https://github.com/YOUR_ACCOUNT/clipfittt.git
 git push -u origin main
 ```
 
@@ -29,8 +29,8 @@ Optional release tag, after the initial push:
 ```sh
 git tag -a v1.0.0 -m 'Source release v1.0.0'
 git push origin v1.0.0
-git archive --format=zip --prefix=finder-video-compressor-1.0.0/ \
-  --output=../finder-video-compressor-1.0.0-source.zip v1.0.0
+git archive --format=zip --prefix=clipfittt-1.0.0/ \
+  --output=../clipfittt-1.0.0-source.zip v1.0.0
 ```
 
 Publish source archives only. Do not attach locally downloaded HandBrakeCLI,

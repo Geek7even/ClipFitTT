@@ -2,6 +2,9 @@
 
 ## 1.0.0 — 2026-11-13
 
+- Project name: ClipFitTT; use case: preparing videos for TeamTalk mobile preview.
+- English project/delivery paths, branded Finder service and CLI preset.
+- README/project description explicitly disclose AI-only programming.
 - First source-only public release of the macOS Finder compression workflow.
 - Same-source dimensions/frame rate, H.264 MP4 output below decimal 100 MB.
 - Small H.264 inputs are remuxed; oversized remux results fall back to encoding.

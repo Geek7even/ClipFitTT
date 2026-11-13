@@ -33,7 +33,7 @@ def binary_version(binary):
 
 def request(url):
     return urllib.request.Request(url, headers={
-        'User-Agent': 'FinderVideoCompressor/1.0.0', 'Accept': 'application/vnd.github+json'})
+        'User-Agent': 'ClipFitTT/1.0.0', 'Accept': 'application/vnd.github+json'})
 
 
 def latest_release():
@@ -84,7 +84,7 @@ def validate_candidate(binary, version, root):
         raise ValueError('新版 CLI 不支持当前压缩参数，保持原版本。')
     # Importing/exporting exercises the current preset without encoding a video.
     subprocess.run([str(binary), '--preset-import-file', str(root / 'preset.json'),
-                    '-Z', 'Compressor', '--preset-export', 'UpdateCompatibilityCheck'],
+                    '-Z', 'ClipFitTT', '--preset-export', 'UpdateCompatibilityCheck'],
                    capture_output=True, check=True, timeout=15)
 
 

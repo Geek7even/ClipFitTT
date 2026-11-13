@@ -1,7 +1,8 @@
 # Third-party notices
 
-This is an independent Finder automation project. It is not an official
-HandBrake or FFmpeg distribution and does not claim endorsement by either.
+ClipFitTT is an independent Finder automation project intended to help prepare
+videos for TeamTalk mobile preview. It is not an official TeamTalk, HandBrake,
+or FFmpeg product and does not claim endorsement by those projects.
 This repository and its source release archives do not contain third-party
 executables, installers, libraries, or media.
 

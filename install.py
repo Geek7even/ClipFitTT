@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Install the source-only Finder service without administrator privileges."""
+"""Install ClipFitTT's source-only Finder service without administrator privileges."""
 import argparse
 import fcntl
 import json
@@ -16,7 +16,7 @@ import cli_update
 
 ROOT = Path(__file__).resolve().parent
 MINIMUM_CLI = '1.11.2'
-MANAGED_FILES = ('cli_update.py', 'compress.py', 'preset.json', 'README.md',
+MANAGED_FILES = ('cli_update.py', 'compress.py', 'preset.json', 'README.md', 'DESCRIPTION.txt',
                  'LICENSE', 'COPYRIGHT', 'THIRD_PARTY_NOTICES.md', 'PRIVACY.md',
                  'CONTRIBUTING.md', 'RELEASING.md', 'CHANGELOG.md', 'VERSION')
 
@@ -144,7 +144,7 @@ def install(args):
                 allow_download = input('未找到可用 CLI。从 HandBrake 官方发布下载并校验？[y/N] ').strip().lower() in ('y', 'yes')
             if not allow_download:
                 raise RuntimeError('请安装 HandBrakeCLI，使用 --handbrake 指定路径，或明确添加 --download-cli。')
-        with tempfile.TemporaryDirectory(prefix='.video-compressor-install-', dir=destination.parent) as directory:
+        with tempfile.TemporaryDirectory(prefix='.clipfittt-install-', dir=destination.parent) as directory:
             stage = Path(directory)
             (stage / 'bin').mkdir()
             for name in MANAGED_FILES:

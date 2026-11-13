@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Finder video compression using HandBrakeCLI; sizes are decimal bytes."""
+"""ClipFitTT: Finder video preparation for mobile preview; decimal byte limits."""
 import argparse
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime
@@ -260,7 +260,7 @@ def transcode(source, info, limit, working, log):
     for attempt in range(1, 5):
         print(f'第 {attempt} 次编码：视频 {video_kbps} kbps，音频每轨 {audio_kbps} kbps', flush=True)
         command = [tool('HandBrakeCLI'), '--preset-import-file', str(ROOT / 'preset.json'),
-                   '-Z', 'Compressor', '-i', str(source), '-o', str(candidate),
+                   '-Z', 'ClipFitTT', '-i', str(source), '-o', str(candidate),
                    '--min-duration', '0', '-f', 'av_mp4', '-e', 'x264',
                    '--encoder-preset', 'medium', '-b', str(video_kbps),
                    '--multi-pass', '--turbo', '--vfr', '--crop-mode', 'none',
@@ -352,7 +352,7 @@ def compress(source, limit):
 
 def launch(files):
     # Open a .command document, avoiding Terminal Apple Events permission.
-    fd, filename = tempfile.mkstemp(prefix='VideoCompressor-', suffix='.command')
+    fd, filename = tempfile.mkstemp(prefix='ClipFitTT-', suffix='.command')
     with os.fdopen(fd, 'w', encoding='utf-8') as handle:
         handle.write('#!/bin/zsh\n')
         handle.write('/bin/rm -f -- "$0"\n')

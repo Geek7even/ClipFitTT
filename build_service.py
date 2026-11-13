@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Generate a user-specific Finder service at installation time."""
+"""Generate the user-specific ClipFitTT Finder service at installation time."""
 from pathlib import Path
 import plistlib
 import shlex
@@ -8,8 +8,9 @@ import sys
 import uuid
 
 ROOT = Path(__file__).resolve().parent
-NAME = '压缩视频至100MB（H.264）'
-DEFAULT_APP_DIR = Path.home() / 'Library/Application Support/VideoCompressor'
+NAME = 'ClipFitTT'
+MENU_NAME = 'ClipFitTT — 压缩视频至100MB'
+DEFAULT_APP_DIR = Path.home() / 'Library/Application Support/ClipFitTT'
 
 
 def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
@@ -35,10 +36,10 @@ def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
         'UUID': str(uuid.uuid4()), 'isViewVisible': True,
     }
     info = {
-        'CFBundleIdentifier': 'local.videocompressor.finder100mb',
+        'CFBundleIdentifier': 'local.clipfittt.finder100mb',
         'CFBundleName': NAME,
         'CFBundleShortVersionString': (ROOT / 'VERSION').read_text().strip(),
-        'NSServices': [{'NSMenuItem': {'default': NAME}, 'NSMessage': 'runWorkflowAsService',
+        'NSServices': [{'NSMenuItem': {'default': MENU_NAME}, 'NSMessage': 'runWorkflowAsService',
                         'NSRequiredContext': {'NSApplicationIdentifier': 'com.apple.finder'},
                         'NSSendFileTypes': ['public.mpeg-4', 'com.apple.quicktime-movie']}],
     }

@@ -1,7 +1,11 @@
-# Finder Video Compressor
+# ClipFitTT
 
-macOS Finder 右键压缩 MP4/MOV：输出 H.264 MP4，单文件小于十进制 **100 MB（100,000,000 字节）**。
-版本 **1.0.0**，发布日期 **2026-11-13**。独立工具，非 HandBrake/FFmpeg 官方项目。
+**ClipFitTT 是一款为方便在 TeamTalk 手机端预览视频而制作的 macOS 小工具。**
+在日常沟通和协作中，它帮助你在电脑上提前整理需要分享的视频，减少手动调整格式和文件大小的重复操作。
+通过 Finder 右键即可批量处理 MP4/MOV，将视频重新封装或压缩为 H.264 MP4，
+控制单个文件小于十进制 **100 MB（100,000,000 字节）**，并保留原分辨率与同源帧率，方便后续发送和预览。
+
+版本 **1.0.0**，发布日期 **2026-11-13**。本项目为独立工具，与 TeamTalk、HandBrake、FFmpeg 无官方隶属或背书关系。
 
 ## 处理规则
 
@@ -60,13 +64,13 @@ python3 install.py --handbrake /path/to/HandBrakeCLI
 安装位置：
 
 ```text
-~/Library/Services/压缩视频至100MB（H.264）.workflow
-~/Library/Application Support/VideoCompressor/
+~/Library/Services/ClipFitTT.workflow
+~/Library/Application Support/ClipFitTT/
 ```
 
 ## 使用
 
-Finder 中选择 MP4/MOV，右键点击 **压缩视频至100MB（H.264）**；macOS 也可能将它放在“服务”中。
+Finder 中选择 MP4/MOV，右键点击 **ClipFitTT — 压缩视频至100MB**；macOS 也可能将它放在“服务”中。
 终端显示进度和最终输出路径。等待“完成”后再使用输出；复制期间目标文件可能已经可见。
 完成后按回车结束；Control+C 可取消任务。首次访问受保护文件夹时，macOS 可能请求正常的文件访问权限。
 
@@ -90,7 +94,7 @@ Finder 中选择 MP4/MOV，右键点击 **压缩视频至100MB（H.264）**；ma
 
 ## 卸载
 
-删除本工具的上述 `.workflow` 和 `VideoCompressor` 程序目录，然后注销/登录刷新菜单。
+删除本工具的上述 `.workflow` 和 `ClipFitTT` 程序目录，然后注销/登录刷新菜单。
 删除程序目录前，先检查 `work/` 是否包含需要恢复的视频。FFmpeg、Python 和其他应用不受影响。
 
 ## 开发与验证
@@ -111,8 +115,8 @@ python3 tools/smoke_test.py --handbrake /path/to/HandBrakeCLI
 
 ```sh
 python3 install.py --handbrake /path/to/HandBrakeCLI \
-  --app-dir /tmp/video-compressor-test/App \
-  --services-dir /tmp/video-compressor-test/Services --no-register
+  --app-dir /tmp/clipfittt-test/App \
+  --services-dir /tmp/clipfittt-test/Services --no-register
 ```
 
 ## 许可证与贡献
@@ -120,3 +124,9 @@ python3 install.py --handbrake /path/to/HandBrakeCLI \
 项目代码和文档采用 **GPL-2.0-only**，全文见 [LICENSE](LICENSE)，版权见 [COPYRIGHT](COPYRIGHT)。
 `preset.json` 的上游来源、第三方许可及外部程序分发义务见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 贡献与发布流程见 [CONTRIBUTING.md](CONTRIBUTING.md)、[RELEASING.md](RELEASING.md)。
+
+## 开发方式
+
+本项目的代码编写与修改全部由 AI 完成；HandBrake、FFmpeg 等第三方组件由各自项目维护，不属于此声明范围。
+
+**本项目仅使用 AI 进行编程。**

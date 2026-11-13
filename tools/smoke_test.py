@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--handbrake', required=True)
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix='video-compressor-smoke-') as directory:
+    with tempfile.TemporaryDirectory(prefix='clipfittt-smoke-') as directory:
         directory = Path(directory)
         app, services = directory / 'App', directory / 'Services'
         installation = [sys.executable, ROOT / 'install.py', '--handbrake', args.handbrake,

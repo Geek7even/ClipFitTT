@@ -16,7 +16,7 @@ def main():
     if findings:
         raise SystemExit('\n'.join(findings))
     version = (ROOT / 'VERSION').read_text().strip()
-    prefix = f'finder-video-compressor-{version}'
+    prefix = f'clipfittt-{version}'
     archive = ROOT.parent / f'{prefix}-source.zip'
     # A fixed timestamp avoids embedding local file modification times.
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as handle:
