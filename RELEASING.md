@@ -48,3 +48,21 @@ external executable introduces separate upstream license/source obligations.
 
 GitHub Actions runs the offline unit/privacy checks for pushes and pull requests.
 Local smoke-test output is not proof of Intel or other untested macOS support.
+
+## Standard project credits
+
+Use these exact credits in the README footer, release notes, and an About view
+if the project gains one:
+
+```markdown
+**Designed by Geek7even**
+
+**Developed entirely with AI**
+```
+
+In plain-text fields such as the GitHub repository description, use
+`Designed by Geek7even · Developed entirely with AI` without Markdown markers.
+Keep the functional project introduction before the credits. Preserve the legal
+COPYRIGHT/LICENSE information and third-party acknowledgements independently.
+Carry this convention forward in future releases; prepare a new version before
+replacing any already-published versioned archive or tag.

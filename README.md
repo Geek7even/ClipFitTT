@@ -126,8 +126,10 @@ python3 install.py --handbrake /path/to/HandBrakeCLI \
 `preset.json` 的上游来源、第三方许可及外部程序分发义务见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 贡献与发布流程见 [CONTRIBUTING.md](CONTRIBUTING.md)、[RELEASING.md](RELEASING.md)。
 
-## 开发方式
+## 设计与开发
 
-本项目的代码编写与修改全部由 AI 完成；HandBrake、FFmpeg 等第三方组件由各自项目维护，不属于此声明范围。
+以下署名适用于本项目；HandBrake、FFmpeg 等第三方组件由各自项目维护。
 
-**本项目仅使用 AI 进行编程。**
+**Designed by Geek7even**
+
+**Developed entirely with AI**

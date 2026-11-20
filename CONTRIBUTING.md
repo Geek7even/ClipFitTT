@@ -12,3 +12,6 @@ Retain upstream notices and identify any new third-party content and license.
 
 Use synthetic fixtures generated at test time. Read PRIVACY.md before sharing
 diagnostics. Intel/macOS-version test results should state what was actually tested.
+
+For project descriptions, README footers, release notes, and any future About
+view, follow the standard project credits in RELEASING.md.

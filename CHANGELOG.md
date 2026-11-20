@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Standardized project credits: Designed by Geek7even; Developed entirely with AI.
+- Documented the credits convention for descriptions, release notes and future About views.
+
 ## 0.9.1-beta.1 — 2026-11-13
 
 - First beta package, displayed as ClipFitTT Beta 0.9.1.
