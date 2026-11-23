@@ -28,7 +28,7 @@ def main():
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as handle:
         for relative in paths:
             data = (ROOT / relative).read_bytes()
-            info = zipfile.ZipInfo(f'{prefix}/{relative.as_posix()}', date_time=(2026, 11, 13, 0, 0, 0))
+            info = zipfile.ZipInfo(f'{prefix}/{relative.as_posix()}', date_time=(2026, 11, 24, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             # Store a regular source-file mode without local ownership data.
             info.external_attr = 0o100644 << 16
