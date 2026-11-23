@@ -5,6 +5,11 @@ Treat this package as a pre-release. The complete version is read from VERSION;
 the workflow's numeric Apple version field uses 0.9.1, with the complete beta
 identifier retained separately in ClipFitTTVersion.
 
+Every GitHub push requires the privacy review in AGENTS.md, even for small
+documentation updates. Inspect the complete outgoing history, commit/tag
+identity, and publication assets; remove sensitive content and recheck before
+pushing. Resolve ambiguous public/private information with the user first.
+
 1. Review VERSION, CHANGELOG.md, README.md, DESCRIPTION.txt, COPYRIGHT, and THIRD_PARTY_NOTICES.md.
 2. Run unit tests and the optional macOS smoke test.
 3. Run `python3 tools/check_release.py`, then inspect `git diff --cached` and

@@ -13,6 +13,11 @@ Retain upstream notices and identify any new third-party content and license.
 Use synthetic fixtures generated at test time. Read PRIVACY.md before sharing
 diagnostics. Intel/macOS-version test results should state what was actually tested.
 
+Before every GitHub push, including documentation-only changes, complete the
+mandatory privacy review in AGENTS.md. Sanitize the entire outgoing commit
+range and publication assets, then rescan; reviewing only the working tree is
+insufficient. Ask the maintainer about uncertain private/public information.
+
 For project descriptions, README footers, release notes, and any future About
 view, follow the standard project credits in RELEASING.md.
 
