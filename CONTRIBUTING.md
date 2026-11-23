@@ -15,3 +15,15 @@ diagnostics. Intel/macOS-version test results should state what was actually tes
 
 For project descriptions, README footers, release notes, and any future About
 view, follow the standard project credits in RELEASING.md.
+
+## Comments and docstrings
+
+- Follow [PEP 8](https://peps.python.org/pep-0008/#comments) for comments and
+  [PEP 257](https://peps.python.org/pep-0257/) for docstring structure.
+- Keep code documentation in English, matching the existing source files.
+- Give modules and public callables a concise summary; describe input/output
+  contracts, side effects, error behavior, and caller restrictions when useful.
+- Explain decisions, units, boundary conditions, and recovery assumptions in
+  comments rather than narrating obvious statements. Update comments with code.
+- Prefer descriptive test names plus fixture/scenario notes over repeating
+  each test's implementation in a docstring.

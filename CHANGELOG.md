@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Document callable contracts and key media, update, installation, and recovery
+  decisions without changing executable logic.
 - Standardized project credits: Designed by Geek7even; Developed entirely with AI.
 - Documented the credits convention for descriptions, release notes and future About views.
 

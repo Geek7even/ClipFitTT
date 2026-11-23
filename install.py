@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Install ClipFitTT's source-only Finder service without administrator privileges."""
+"""Install ClipFitTT's Finder service for the current user."""
 import argparse
 import fcntl
 import json
@@ -16,12 +16,14 @@ import cli_update
 
 ROOT = Path(__file__).resolve().parent
 MINIMUM_CLI = '1.11.2'
+# Explicit ownership keeps reinstalls from replacing logs or recovery media.
 MANAGED_FILES = ('cli_update.py', 'compress.py', 'preset.json', 'README.md', 'DESCRIPTION.txt',
                  'LICENSE', 'COPYRIGHT', 'THIRD_PARTY_NOTICES.md', 'PRIVACY.md',
                  'CONTRIBUTING.md', 'RELEASING.md', 'CHANGELOG.md', 'VERSION')
 
 
 def find_executable(name):
+    """Locate an executable on PATH or common Apple Silicon/Intel prefixes."""
     found = shutil.which(name)
     if found:
         return Path(found).resolve()
@@ -33,6 +35,11 @@ def find_executable(name):
 
 
 def preflight():
+    """Validate platform/tools and return resolved FFmpeg/ffprobe paths.
+
+    Check existing dependencies only; do not install a package manager,
+    Python, or FFmpeg as a side effect.
+    """
     if sys.platform != 'darwin':
         raise RuntimeError('Finder 右键服务仅支持 macOS。')
     if sys.version_info < (3, 11):
@@ -44,6 +51,12 @@ def preflight():
 
 
 def choose_cli(explicit, destination):
+    """Return a compatible existing CLI Path, or None if none is usable.
+
+    An explicit path must pass every check. Automatic discovery prefers the
+    installed private CLI, preserving a compatible newer version on reinstall.
+    This function does not access the network or authorize a download.
+    """
     candidates = [Path(explicit).expanduser()] if explicit else [destination / 'bin/HandBrakeCLI']
     if not explicit:
         found = shutil.which('HandBrakeCLI')
@@ -67,7 +80,19 @@ def choose_cli(explicit, destination):
 
 
 def commit_install(stage, workflow, destination, services):
-    """Replace managed files only; preserve logs/work and roll back on failure."""
+    """Install staged managed files and a service with rollback on failure.
+
+    Args:
+        stage: Prepared package root including a compatible private CLI.
+        workflow: Generated service directory targeting the final app path.
+        destination: Application-support directory to update in place.
+        services: User Services directory, or an isolated test equivalent.
+
+    Replace files individually on their target filesystem. Keep prior files
+    and the prior workflow until replacement succeeds, restoring them after
+    a later failure. Leave unowned logs and recovery directories untouched.
+    The caller must hold the installation's queue lock.
+    """
     destination.mkdir(parents=True, exist_ok=True)
     services.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.install-backup-', dir=destination.parent) as saved:
@@ -78,11 +103,13 @@ def commit_install(stage, workflow, destination, services):
         changed = []
         target_workflow = services / workflow.name
         old_workflow = services / ('.previous-' + workflow.name)
+        # The service may live on a different volume from application data.
         service_staged = Path(tempfile.mkdtemp(prefix='.service-install-', dir=services))
         service_saved = False
         service_installed = False
         try:
             if old_workflow.exists():
+                # Preserve a prior interrupted install's recovery material.
                 raise RuntimeError(f'发现上次安装的恢复目录，请先检查：{old_workflow}')
             shutil.copytree(workflow, service_staged / workflow.name)
             for relative in entries:
@@ -111,6 +138,7 @@ def commit_install(stage, workflow, destination, services):
             os.replace(service_staged / workflow.name, target_workflow)
             service_installed = True
         except BaseException:
+            # Undo the service change first, then restore files in reverse.
             if service_installed:
                 shutil.rmtree(target_workflow)
             if service_saved:
@@ -130,6 +158,13 @@ def commit_install(stage, workflow, destination, services):
 
 
 def install(args):
+    """Prepare, validate, and install a package from parsed CLI options.
+
+    Resolve dependencies before changing managed files. Reuse an existing
+    CLI, or obtain download consent before provisioning an official build.
+    Hold the queue lock through staging and replacement, then refresh the
+    service registry unless isolated installation was requested.
+    """
     tools = preflight()
     destination = Path(args.app_dir).expanduser().absolute()
     services = Path(args.services_dir).expanduser().absolute()
@@ -153,6 +188,7 @@ def install(args):
                 shutil.copy2(local_cli, stage / 'bin/HandBrakeCLI')
             else:
                 cli_update.install_release(cli_update.latest_release(), stage / 'bin/HandBrakeCLI', stage)
+            # Store executable paths locally, outside the published package.
             (stage / 'runtime_config.json').write_text(json.dumps(tools, indent=2) + '\n')
             workflow = build_service.build(stage / 'generated', destination, sys.executable)
             commit_install(stage, workflow, destination, services)
@@ -160,6 +196,7 @@ def install(args):
         try:
             subprocess.run(['/System/Library/CoreServices/pbs', '-update'], check=True, timeout=15)
         except (OSError, subprocess.SubprocessError) as error:
+            # Registry refresh is separate from the completed file install.
             print(f'文件已安装，系统服务刷新未完成：{error}。请注销后重新登录以刷新菜单。', file=sys.stderr)
     version = (ROOT / 'VERSION').read_text().strip()
     print(f'{build_service.display_version(version)}（{version}）')
@@ -168,6 +205,7 @@ def install(args):
 
 
 def main():
+    """Parse options and exit with code 1 on installation failure."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--handbrake', metavar='PATH', help='使用已有的 HandBrakeCLI')
     parser.add_argument('--download-cli', action='store_true', help='没有可用 CLI 时允许从官方下载')

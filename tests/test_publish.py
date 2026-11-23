@@ -13,7 +13,10 @@ spec.loader.exec_module(compress)
 
 
 class PublishTests(unittest.TestCase):
+    """Cover copy integrity, non-overwriting names, and local recovery."""
+
     def setUp(self):
+        """Create isolated candidate/source paths for publication scenarios."""
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)

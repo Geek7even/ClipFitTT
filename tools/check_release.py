@@ -18,6 +18,12 @@ PATTERNS = {
 
 
 def candidates():
+    """Return unique Git candidate paths after requiring index consistency.
+
+    A clean working-tree/index comparison prevents scanning sanitized files
+    while different, possibly private content remains staged for a commit.
+    Include tracked files and nonignored untracked files, in stable order.
+    """
     state = subprocess.run(['git', 'diff', '--quiet'], cwd=ROOT)
     if state.returncode:
         raise RuntimeError('Working tree differs from staged files; review and restage changes before release checks.')
@@ -27,6 +33,12 @@ def candidates():
 
 
 def check(paths):
+    """Return review findings for candidate paths relative to the repository.
+
+    Reject runtime artifacts, links, binaries, unexpected large files, and
+    common private-data patterns. This is a release guard, not an exhaustive
+    credential scanner; a human still reviews contents and Git identity.
+    """
     findings = []
     for relative in paths:
         path = ROOT / relative
@@ -56,6 +68,7 @@ def check(paths):
 
 
 def main():
+    """Print release findings and return 0 only when all checks pass."""
     try:
         paths = candidates()
     except (RuntimeError, subprocess.CalledProcessError) as error:

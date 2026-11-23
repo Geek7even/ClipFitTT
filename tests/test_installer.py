@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
+"""Test workflow metadata and staged-install rollback without real installs."""
 import json
 from pathlib import Path
 import plistlib
@@ -13,6 +14,8 @@ import install
 
 
 class InstallerTests(unittest.TestCase):
+    """Exercise generated service paths and managed-file replacement."""
+
     def test_beta_workflow_retains_full_version_with_numeric_apple_version(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -38,6 +41,7 @@ class InstallerTests(unittest.TestCase):
             self.assertIn('"$@"', command)
 
     def make_stage(self, root):
+        """Return a fake package and workflow with distinguishable contents."""
         stage = root / 'stage'
         stage.mkdir()
         for name in install.MANAGED_FILES:
@@ -70,6 +74,7 @@ class InstallerTests(unittest.TestCase):
                 (app / name).write_text('old ' + name)
             real_replace = install.os.replace
             def fail_on_preset(source, target):
+                # Fail after earlier files have changed to exercise rollback.
                 if Path(target) == app / 'preset.json':
                     raise OSError('simulated installation failure')
                 return real_replace(source, target)
@@ -102,6 +107,7 @@ class InstallerTests(unittest.TestCase):
             (old / 'keep.txt').write_text('old workflow')
             real_replace = install.os.replace
             def fail_on_service(source, target):
+                # Fail the new service move, not restoration of the old one.
                 if Path(target) == old and '.service-install-' in str(source):
                     raise OSError('service registration stage failure')
                 return real_replace(source, target)

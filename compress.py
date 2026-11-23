@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""ClipFitTT: Finder video preparation for mobile preview; decimal byte limits."""
+"""Prepare videos for mobile preview within decimal byte limits."""
 import argparse
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime
@@ -23,30 +23,47 @@ from zoneinfo import ZoneInfo
 import cli_update
 
 ROOT = Path(__file__).resolve().parent
+# Finder reports decimal MB; every successful output must be strictly smaller.
 LIMIT = 100_000_000
+# Aim below the ceiling to allow for bitrate rounding and container overhead.
 TARGET_RATIO = 0.999
+# Retention applies only to owned log names, including the legacy format.
 LOG_PATTERN = re.compile(r'^(?:encode-[A-Za-z0-9_-]+|\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}__(?:process|update)__[A-Za-z0-9_-]+)\.log$')
 
 
 class Tee:
+    """Mirror text to the original console and a task's open log stream."""
+
     def __init__(self, console, log):
+        """Retain the caller-owned console and log streams."""
         self.console, self.log = console, log
 
     def write(self, text):
+        """Write to both streams and flush diagnostics before returning."""
         self.console.write(text)
         self.log.write(text)
         self.log.flush()
         return len(text)
 
     def flush(self):
+        """Flush both destinations without closing either stream."""
         self.console.flush()
         self.log.flush()
 
     def isatty(self):
+        """Report the console's interactivity rather than the log file's."""
         return self.console.isatty()
 
 
 def clean_logs(now=None):
+    """Remove owned logs older than seven days and return their count.
+
+    Args:
+        now: Optional epoch timestamp for deterministic retention checks.
+
+    Use modification time, ignore symlinks and unrelated filenames, and
+    report individual deletion failures without stopping video processing.
+    """
     logs = ROOT / 'logs'
     logs.mkdir(exist_ok=True)
     cutoff = (time.time() if now is None else now) - 7 * 24 * 60 * 60
@@ -65,6 +82,11 @@ def clean_logs(now=None):
 
 @contextmanager
 def task_log(kind='process'):
+    """Yield a unique log path while mirroring console output into it.
+
+    Names use Beijing time and omit source filenames. The temporary-file
+    suffix prevents collisions between tasks started within the same second.
+    """
     logs = ROOT / 'logs'
     logs.mkdir(exist_ok=True)
     stamp = datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d_%H-%M-%S')
@@ -77,6 +99,11 @@ def task_log(kind='process'):
 
 
 def tool(name):
+    """Resolve an executable from installed configuration and fallbacks.
+
+    HandBrakeCLI bypasses configured paths so its private, replaceable binary
+    can be selected from this installation's bin directory.
+    """
     configuration = ROOT / 'runtime_config.json'
     if configuration.is_file() and name != 'HandBrakeCLI':
         configured = json.loads(configuration.read_text()).get(name)
@@ -93,10 +120,17 @@ def tool(name):
 
 
 def probe(path):
+    """Return source metadata needed for routing and output validation.
+
+    The result contains raw primary-video/all-audio stream dictionaries,
+    a positive duration in seconds, and display-oriented pixel dimensions.
+    Invalid media/probe results propagate to the per-file error handler.
+    """
     result = subprocess.run([tool('ffprobe'), '-v', 'error', '-show_format',
                              '-show_streams', '-of', 'json', str(path)],
                             capture_output=True, text=True, check=True)
     data = json.loads(result.stdout)
+    # Embedded cover art must not be mistaken for the actual video track.
     videos = [s for s in data['streams'] if s['codec_type'] == 'video'
               and not s.get('disposition', {}).get('attached_pic')]
     if not videos:
@@ -108,6 +142,7 @@ def probe(path):
     rotation = next((float(s['rotation']) for s in video.get('side_data_list', [])
                      if 'rotation' in s), 0)
     width, height = video['width'], video['height']
+    # A rotated MOV may store landscape pixels but display as portrait.
     if round(rotation) % 180:
         width, height = height, width
     return dict(video=video, duration=duration, dimensions=(width, height),
@@ -115,6 +150,16 @@ def probe(path):
 
 
 def verify(source, path, limit):
+    """Validate an output against probe metadata and return its metadata.
+
+    Args:
+        source: Metadata returned by probe() for the original input.
+        path: Completed local output to inspect before saving.
+        limit: Exclusive upper size bound in decimal bytes.
+
+    Raise RuntimeError for an unacceptable size, codec, geometry, duration,
+    frame count/rate, or audio-track count. Probe/parse errors propagate.
+    """
     output = probe(path)
     if not 0 < path.stat().st_size < limit:
         raise RuntimeError('输出文件未满足大小限制。')
@@ -124,8 +169,10 @@ def verify(source, path, limit):
         raise RuntimeError(f"分辨率发生变化：{source['dimensions']} → {output['dimensions']}，不发布该输出。")
     a, b = source['video'], output['video']
     fps = float(Fraction(a.get('avg_frame_rate', '0/1')))
+    # Allow short timestamp normalization, scaled for slow frame rates.
     if abs(output['duration'] - source['duration']) > max(0.15, 2 / max(fps, 1)):
         raise RuntimeError('输出视频时长发生变化，不发布该输出。')
+    # Prefer exact frame counts; use average-rate tolerance if unavailable.
     if a.get('nb_frames', 'N/A') != 'N/A' and b.get('nb_frames', 'N/A') != 'N/A':
         if int(a['nb_frames']) != int(b['nb_frames']):
             raise RuntimeError('输出帧数发生变化，不发布该输出。')
@@ -137,8 +184,17 @@ def verify(source, path, limit):
 
 
 def publish(temp, source):
-    # SMB/exFAT may not support hard links. Exclusive creation also works across
-    # volumes and never replaces an existing file, including concurrent writers.
+    """Copy verified media beside the source without overwriting a file.
+
+    Reserve a numbered _compressed.mp4 name with exclusive creation, then
+    verify the copy's size and SHA-256. On failure, attempt to remove that
+    destination and leave the local input available for recovery. The new
+    destination can be visible while copying; completion is not atomic.
+
+    Return the final Path, or propagate the copy/validation exception.
+    """
+    # SMB/exFAT may not support hard links. Exclusive creation also works
+    # across volumes and does not replace an existing destination.
     number = 1
     while True:
         suffix = '_compressed' if number == 1 else f'_compressed_{number}'
@@ -168,6 +224,11 @@ def publish(temp, source):
 
 @contextmanager
 def encoding_workspace():
+    """Yield local scratch space and retain best.mp4 after a failed task.
+
+    Successful tasks and failures without a usable best candidate remove
+    their scratch directory. The retained path is reported for recovery.
+    """
     # Encode locally so a disconnected NAS cannot erase a completed encode.
     cache = ROOT / 'work'
     cache.mkdir(exist_ok=True)
@@ -186,9 +247,16 @@ def encoding_workspace():
 
 
 def encode(command, log):
+    """Run HandBrake, append diagnostics, and display encoding progress.
+
+    Terminate the child when interrupted and raise RuntimeError for a
+    nonzero exit status. The caller owns the candidate output and recovery.
+    """
     with log.open('a', encoding='utf-8') as handle:
         handle.write('\n' + shlex.join(command) + '\n')
         handle.flush()
+        # Stream stderr directly to disk so diagnostics cannot fill a pipe
+        # while stdout is being consumed for progress updates.
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=handle,
                               text=True, bufsize=1) as process:
             try:
@@ -211,6 +279,13 @@ def encode(command, log):
 
 
 def remux(source, info, output, log):
+    """Copy the primary video and all audio tracks into a workspace MP4.
+
+    Retry a failed attempt with AAC audio when audio exists, while keeping
+    video stream-copy enabled. Raise RuntimeError if remuxing still fails;
+    the caller separately verifies the result and checks its final size.
+    """
+    # The candidate lives in scratch space; -y can replace it safely.
     command = [tool('ffmpeg'), '-hide_banner', '-nostdin', '-loglevel', 'warning',
                '-y', '-copyts', '-start_at_zero', '-i', str(source),
                '-map', f'0:{info["video"]["index"]}', '-map', '0:a?',
@@ -242,10 +317,18 @@ def remux(source, info, output, log):
 
 
 def transcode(source, info, limit, working, log):
+    """Return the best verified, under-limit candidate after up to four tries.
+
+    Estimate an initial video bitrate from duration and the audio budget,
+    then correct it using measured output sizes. Keep accepted candidates
+    in working/best.mp4; never publish directly to the source directory.
+    Raise RuntimeError if no attempt produces an acceptable output.
+    """
     duration = info['duration']
     count = len(info['audio'])
     # Budget all audio tracks, MP4 tables, and packet overhead before video.
     total_kbps = limit * TARGET_RATIO * 8 / duration / 1000
+    # Budget every selected audio track; units here are decimal kbit/s.
     audio_kbps = min(128, int(total_kbps * 0.20 / count)) if count else 0
     if count and audio_kbps < 16:
         raise RuntimeError('视频过长或音轨过多，100 MB 无法容纳最低音频预算。')
@@ -277,21 +360,26 @@ def transcode(source, info, limit, working, log):
         print(f'实际大小：{actual / 1e6:.3f} MB', flush=True)
         if actual < limit:
             verify(info, candidate, limit)
+            # A later attempt can be smaller; retain the largest valid one.
             if not best.exists() or actual > best.stat().st_size:
                 os.replace(candidate, best)
             if actual >= limit * 0.99:
                 break
             if previous and previous[1] < limit and actual <= previous[1] * 1.002:
+                # Stop retrying when another valid attempt adds little size.
                 print('编码器已接近该内容的有效码率上限，保留较小输出。')
                 break
+        # The candidate may already have been promoted to best.mp4.
         output_info = probe(candidate if candidate.exists() else best)
         audio_bytes = sum(float(s.get('bit_rate', audio_kbps * 1000)) *
                           float(s.get('duration', duration)) / 8 for s in output_info['audio'])
         overhead = max(10_000, actual * 0.002)
+        # Correct the video budget after subtracting estimated audio/tables.
         factor = ((limit * TARGET_RATIO - audio_bytes - overhead) /
                   max(1, actual - audio_bytes - overhead))
         new_rate = max(1, int(video_kbps * min(factor, 2.0)))
         if actual >= limit:
+            # Force a decrease even when integer rounding masks overshoot.
             new_rate = min(video_kbps - 1, int(new_rate * 0.995))
         if new_rate == video_kbps:
             break
@@ -304,6 +392,12 @@ def transcode(source, info, limit, working, log):
 
 
 def process_video(source, limit, log):
+    """Route, validate, and save one input, returning the output Path.
+
+    Small H.264 files use remuxing. Equality with the size ceiling, another
+    codec, or an oversized remux result selects HandBrake transcoding.
+    Only validated local media is handed to publish().
+    """
     source = Path(source).absolute()
     if not source.is_file() or source.suffix.lower() not in ('.mp4', '.mov'):
         raise RuntimeError('仅支持 MP4 / MOV 文件。')
@@ -338,6 +432,11 @@ def process_video(source, limit, log):
 
 
 def compress(source, limit):
+    """Clean expired logs and process a file inside a tee-backed task log.
+
+    Record failures, including cancellation, before propagating them to the
+    batch handler. Workspace cleanup/recovery is managed independently.
+    """
     removed = clean_logs()
     with task_log() as log:
         print(f'已清理超过 7 天的日志：{removed} 份。', flush=True)
@@ -351,6 +450,11 @@ def compress(source, limit):
 
 
 def launch(files):
+    """Open a self-cleaning Terminal command for Finder-selected paths.
+
+    Quote every argument independently, and use -- to separate paths from
+    CLI options. Encoding runs outside Automator's short-lived service job.
+    """
     # Open a .command document, avoiding Terminal Apple Events permission.
     fd, filename = tempfile.mkstemp(prefix='ClipFitTT-', suffix='.command')
     with os.fdopen(fd, 'w', encoding='utf-8') as handle:
@@ -363,6 +467,11 @@ def launch(files):
 
 
 def main():
+    """Run a serialized batch and return a nonzero status if any file fails.
+
+    The installation-wide lock also covers the optional CLI update check,
+    preventing this tool's queued tasks from using a binary being replaced.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--launch', action='store_true')
     parser.add_argument('--limit-bytes', type=int, default=LIMIT, help=argparse.SUPPRESS)

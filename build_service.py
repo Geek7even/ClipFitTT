@@ -15,11 +15,18 @@ DEFAULT_APP_DIR = Path.home() / 'Library/Application Support/ClipFitTT'
 
 
 def display_version(version):
+    """Format the project version for users, keeping beta labels readable."""
     base, _, prerelease = version.partition('-')
     return f'{NAME} Beta {base}' if prerelease.startswith('beta.') else f'{NAME} {version}'
 
 
 def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
+    """Generate a Finder workflow and return its directory Path.
+
+    Resolve Python/app paths on the installing computer, and quote them for
+    shell execution. Keep Apple's numeric short version separate from the
+    full ClipFitTT prerelease identifier. This does not register the service.
+    """
     version = (ROOT / 'VERSION').read_text().strip()
     base_version = version.partition('-')[0]
     if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', base_version):
@@ -30,6 +37,7 @@ def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
     contents = workflow / 'Contents'
     (contents / 'Resources').mkdir(parents=True, exist_ok=True)
     script = 'exec ' + shlex.join([python, str(app_dir / 'compress.py'), '--launch']) + ' "$@"\n'
+    # Automator supplies each selected Finder path as a separate argument.
     action = {
         'ActionBundlePath': '/System/Library/Automator/Run Shell Script.action',
         'ActionName': 'Run Shell Script',
@@ -48,6 +56,7 @@ def build(output_dir, app_dir=DEFAULT_APP_DIR, python_executable=None):
     info = {
         'CFBundleIdentifier': 'local.clipfittt.finder100mb',
         'CFBundleName': NAME,
+        # Apple expects a numeric version; retain the beta ID in custom keys.
         'CFBundleShortVersionString': base_version,
         'ClipFitTTVersion': version,
         'ClipFitTTDisplayVersion': display_version(version),

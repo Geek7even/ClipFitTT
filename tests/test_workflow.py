@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
+"""Cover routing, log retention, and update consent with isolated fixtures."""
 import contextlib
 import io
 import os
@@ -11,11 +12,15 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import compress
 import cli_update
+# Keep an unpatched installer entry point for the separate rollback scenarios.
 INSTALL_RELEASE = cli_update.install_release
 
 
 class WorkflowTests(unittest.TestCase):
+    """Test routing and log behavior without invoking real media encoders."""
+
     def setUp(self):
+        """Stub metadata/validation and confine all files to a temporary root."""
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
@@ -101,7 +106,10 @@ class WorkflowTests(unittest.TestCase):
 
 
 class UpdateTests(unittest.TestCase):
+    """Verify consent decisions and installer failures without networking."""
+
     def setUp(self):
+        """Provide a newer mock release and intercept update side effects."""
         self.release = dict(version='1.12.0', url='https://github.com/HandBrake/HandBrake/releases/download/1.12.0/HandBrakeCLI-1.12.0.dmg', sha256='0' * 64)
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(cli_update, 'binary_version', return_value='1.11.2').start()
@@ -154,6 +162,7 @@ class UpdateTests(unittest.TestCase):
         self._installer_failure(compatibility_error=False)
 
     def _installer_failure(self, compatibility_error):
+        """Emulate a mounted candidate and assert the original CLI survives."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'bin').mkdir()
