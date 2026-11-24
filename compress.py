@@ -25,9 +25,15 @@ import cli_update
 ROOT = Path(__file__).resolve().parent
 # Finder reports decimal MB; every successful output must be strictly smaller.
 LIMIT = 100_000_000
-# Aim below the ceiling to allow for bitrate rounding and container overhead.
+# Allow for bitrate rounding and container overhead below the ceiling.
 TARGET_RATIO = 0.999
-# Retention applies only to owned log names, including the legacy format.
+# Bound metadata inspection without limiting the encoding duration.
+PROBE_TIMEOUT_SECONDS = 60
+# Permit muxer/playback tags, not source descriptions or track names.
+FORMAT_TAGS = frozenset({'major_brand', 'minor_version', 'compatible_brands',
+                         'encoder', 'creation_time'})
+STREAM_TAGS = frozenset({'language', 'handler_name', 'creation_time'})
+# Apply log retention only to names owned by this tool.
 LOG_PATTERN = re.compile(r'^(?:encode-[A-Za-z0-9_-]+|\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}__(?:process|update)__[A-Za-z0-9_-]+)\.log$')
 
 
@@ -122,15 +128,28 @@ def tool(name):
 def probe(path):
     """Return source metadata needed for routing and output validation.
 
-    The result contains raw primary-video/all-audio stream dictionaries,
-    a positive duration in seconds, and display-oriented pixel dimensions.
-    Invalid media/probe results propagate to the per-file error handler.
+    Return primary-video/all-audio stream dictionaries, a positive
+    duration in seconds, and display-oriented pixel dimensions.
+    Include container tags for the final sharing-policy check.
+    Raise RuntimeError after a probe timeout; subprocess.run handles
+    child cleanup. The deadline applies only to ffprobe, not other file
+    I/O or encoding. Other probe/parse errors propagate to the per-file
+    error handler, allowing the batch to continue.
     """
-    result = subprocess.run([tool('ffprobe'), '-v', 'error', '-show_format',
-                             '-show_streams', '-of', 'json', str(path)],
-                            capture_output=True, text=True, check=True)
+    try:
+        result = subprocess.run([tool('ffprobe'), '-v', 'error', '-show_format',
+                                 '-show_streams', '-of', 'json', str(path)],
+                                capture_output=True, text=True, check=True,
+                                timeout=PROBE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        # Reuse batch error handling and best.mp4 recovery for
+        # timeouts during either source or output inspection.
+        raise RuntimeError(
+            f'媒体信息探测超时（{PROBE_TIMEOUT_SECONDS} 秒）：{path}。'
+            '请检查网络、NAS 挂载或源文件，确认后重试。'
+        ) from error
     data = json.loads(result.stdout)
-    # Embedded cover art must not be mistaken for the actual video track.
+    # Exclude embedded cover art from the actual video tracks.
     videos = [s for s in data['streams'] if s['codec_type'] == 'video'
               and not s.get('disposition', {}).get('attached_pic')]
     if not videos:
@@ -146,21 +165,97 @@ def probe(path):
     if round(rotation) % 180:
         width, height = height, width
     return dict(video=video, duration=duration, dimensions=(width, height),
+                format_tags=data.get('format', {}).get('tags', {}),
                 audio=[s for s in data['streams'] if s['codec_type'] == 'audio'])
 
 
-def verify(source, path, limit):
-    """Validate an output against probe metadata and return its metadata.
+class ProbeCache:
+    """Reuse metadata in one private encode workspace.
+
+    Create one instance per input video. Track file identity, size, and
+    modification/change times so rewriting candidate.mp4 invalidates its
+    entry. Never share this cache across jobs or use it for NAS sources.
+    """
+
+    def __init__(self):
+        """Start with no metadata retained from earlier inputs."""
+        self._entries = {}
+
+    @staticmethod
+    def _signature(path):
+        """Read file identity and change indicators with stat."""
+        info = path.stat()
+        return (info.st_dev, info.st_ino, info.st_size,
+                info.st_mtime_ns, info.st_ctime_ns)
+
+    def read(self, path):
+        """Read metadata and reject file changes during probing.
+
+        Probe errors are not cached. Stat before every reuse, including
+        final validation, so replaced or modified candidates are probed
+        again even when their path or size has stayed the same.
+        """
+        before = self._signature(path)
+        cached = self._entries.get(path)
+        if cached is not None and cached[0] == before:
+            return cached[1]
+        output = probe(path)
+        if self._signature(path) != before:
+            raise RuntimeError('媒体信息探测期间文件发生变化，不发布该输出。')
+        self._entries[path] = (before, output)
+        return output
+
+    def replace(self, source, destination):
+        """Promote a candidate with its metadata.
+
+        Use only for this task's private workspace files. A rename may
+        change ctime without changing media bytes; keep metadata only if
+        its identity, size, and mtime still match the pre-move entry.
+        Later reads check the destination's complete signature again.
+        """
+        before = self._signature(source)
+        cached = self._entries.pop(source, None)
+        self._entries.pop(destination, None)
+        os.replace(source, destination)
+        after = self._signature(destination)
+        if (cached is not None and cached[0] == before
+                and before[:4] == after[:4]):
+            self._entries[destination] = (after, cached[1])
+
+
+def verify_metadata(info):
+    """Reject descriptive container and stream tags before publication.
+
+    Permit structural muxer tags and HandBrake's new export timestamp.
+    Stream languages must be three-letter codes; handler names must be
+    generic. Rotation matrices and color data are separate from these
+    tag dictionaries and are not removed or rewritten here.
+    """
+    if set(info.get('format_tags', {})) - FORMAT_TAGS:
+        raise RuntimeError('输出含未允许的描述性元数据，不发布该输出。')
+    for stream in (info['video'], *info['audio']):
+        tags = stream.get('tags', {})
+        handlers = ('', 'VideoHandler', 'SoundHandler')
+        if (set(tags) - STREAM_TAGS
+                or tags.get('handler_name', '') not in handlers
+                or not re.fullmatch(r'[a-z]{3}', tags.get('language', 'und'))):
+            raise RuntimeError('输出含未允许的轨道元数据，不发布该输出。')
+
+
+def verify(source, path, limit, *, probes=None):
+    """Validate output and return its probe metadata.
 
     Args:
         source: Metadata returned by probe() for the original input.
         path: Completed local output to inspect before saving.
         limit: Exclusive upper size bound in decimal bytes.
+        probes: Optional per-input cache for private output files.
 
-    Raise RuntimeError for an unacceptable size, codec, geometry, duration,
-    frame count/rate, or audio-track count. Probe/parse errors propagate.
+    Check size, codec, geometry, duration, frames, tracks, and tags.
+    Cached metadata requires a matching current file signature. Raise
+    RuntimeError for invalid output; probe/parse errors propagate.
     """
-    output = probe(path)
+    output = probe(path) if probes is None else probes.read(path)
     if not 0 < path.stat().st_size < limit:
         raise RuntimeError('输出文件未满足大小限制。')
     if output['video']['codec_name'] != 'h264':
@@ -180,6 +275,7 @@ def verify(source, path, limit):
         raise RuntimeError('输出平均帧率发生变化，不发布该输出。')
     if len(output['audio']) != len(source['audio']):
         raise RuntimeError('输出音轨数量发生变化，不发布该输出。')
+    verify_metadata(output)
     return output
 
 
@@ -281,16 +377,24 @@ def encode(command, log):
 def remux(source, info, output, log):
     """Copy the primary video and all audio tracks into a workspace MP4.
 
-    Retry a failed attempt with AAC audio when audio exists, while keeping
-    video stream-copy enabled. Raise RuntimeError if remuxing still fails;
-    the caller separately verifies the result and checks its final size.
+    Drop descriptive global/stream tags, retaining only valid language
+    codes. Stream-copy keeps display matrices and codec color data.
+    Retry with AAC audio on failure, keeping video stream-copy enabled.
+    Raise RuntimeError if both attempts fail. The caller checks output.
     """
     # The candidate lives in scratch space; -y can replace it safely.
     command = [tool('ffmpeg'), '-hide_banner', '-nostdin', '-loglevel', 'warning',
                '-y', '-copyts', '-start_at_zero', '-i', str(source),
                '-map', f'0:{info["video"]["index"]}', '-map', '0:a?',
-               '-map_metadata', '0', '-map_chapters', '-1', '-c', 'copy',
-               '-movflags', '+faststart', str(output)]
+               '-map_metadata', '-1', '-map_metadata:s', '-1',
+               '-map_chapters', '-1', '-c', 'copy', '-movflags', '+faststart']
+    # Copy language codes, excluding names, locations, and dates.
+    for kind, streams in (('v', [info['video']]), ('a', info['audio'])):
+        for index, stream in enumerate(streams):
+            language = stream.get('tags', {}).get('language', 'und')
+            if re.fullmatch(r'[a-z]{3}', language):
+                command += [f'-metadata:s:{kind}:{index}', f'language={language}']
+    command.append(str(output))
     for audio_retry in (False, True):
         if audio_retry:
             print('直接封装未成功，重试仅将音频转换为 AAC；视频继续直接复制。', flush=True)
@@ -316,14 +420,16 @@ def remux(source, info, output, log):
     raise RuntimeError(f'FFmpeg 重新封装失败，未发布输出。日志：{log}')
 
 
-def transcode(source, info, limit, working, log):
-    """Return the best verified, under-limit candidate after up to four tries.
+def transcode(source, info, limit, working, log, *, probes=None):
+    """Return the best valid candidate after up to four tries.
 
-    Estimate an initial video bitrate from duration and the audio budget,
-    then correct it using measured output sizes. Keep accepted candidates
-    in working/best.mp4; never publish directly to the source directory.
+    Estimate video bitrate from duration and the audio budget.
+    Correct the budget using measured sizes and each attempt's metadata.
+    Share a per-input ProbeCache with final validation when supplied.
+    Keep valid candidates in working/best.mp4; do not publish here.
     Raise RuntimeError if no attempt produces an acceptable output.
     """
+    probes = ProbeCache() if probes is None else probes
     duration = info['duration']
     count = len(info['audio'])
     # Budget all audio tracks, MP4 tables, and packet overhead before video.
@@ -349,7 +455,8 @@ def transcode(source, info, limit, working, log):
                    '--multi-pass', '--turbo', '--vfr', '--crop-mode', 'none',
                    '--crop', '0:0:0:0', '--no-comb-detect', '--no-decomb',
                    '--no-deinterlace', '--no-detelecine', '--no-markers',
-                   '--optimize', '--subtitle', 'none']
+                   '--optimize', '--subtitle', 'none',
+                   '--no-metadata', '--no-keep-aname', '--no-keep-subname']
         if count:
             command += ['--all-audio', '-E', 'ca_aac', '-B', str(audio_kbps),
                         '--mixdown', 'stereo']
@@ -359,18 +466,20 @@ def transcode(source, info, limit, working, log):
         actual = candidate.stat().st_size
         print(f'实际大小：{actual / 1e6:.3f} MB', flush=True)
         if actual < limit:
-            verify(info, candidate, limit)
+            output_info = verify(info, candidate, limit, probes=probes)
             # A later attempt can be smaller; retain the largest valid one.
             if not best.exists() or actual > best.stat().st_size:
-                os.replace(candidate, best)
+                probes.replace(candidate, best)
             if actual >= limit * 0.99:
                 break
             if previous and previous[1] < limit and actual <= previous[1] * 1.002:
                 # Stop retrying when another valid attempt adds little size.
                 print('编码器已接近该内容的有效码率上限，保留较小输出。')
                 break
-        # The candidate may already have been promoted to best.mp4.
-        output_info = probe(candidate if candidate.exists() else best)
+        else:
+            # Oversize output still needs audio metadata for the next
+            # bitrate estimate, but cannot pass the size validation.
+            output_info = probes.read(candidate)
         audio_bytes = sum(float(s.get('bit_rate', audio_kbps * 1000)) *
                           float(s.get('duration', duration)) / 8 for s in output_info['audio'])
         overhead = max(10_000, actual * 0.002)
@@ -402,6 +511,7 @@ def process_video(source, limit, log):
     if not source.is_file() or source.suffix.lower() not in ('.mp4', '.mov'):
         raise RuntimeError('仅支持 MP4 / MOV 文件。')
     info = probe(source)
+    probes = ProbeCache()
     size = source.stat().st_size
     codec = info['video']['codec_name']
     print(f'源文件：{source}\n源大小：{size / 1e6:.3f} MB；视频编码：{codec}', flush=True)
@@ -414,16 +524,16 @@ def process_video(source, limit, log):
             actual = packed.stat().st_size
             print(f'重新封装大小：{actual / 1e6:.3f} MB', flush=True)
             if actual < limit:
-                verify(info, packed, limit)
+                verify(info, packed, limit, probes=probes)
                 best = working / 'best.mp4'
-                os.replace(packed, best)
+                probes.replace(packed, best)
             else:
                 print('重新封装达到或超过大小上限，自动转入 HandBrake 转码。', flush=True)
                 packed.unlink()
         if best is None:
             print('处理方式：HandBrake 限大小转码。', flush=True)
-            best = transcode(source, info, limit, working, log)
-        verify(info, best, limit)
+            best = transcode(source, info, limit, working, log, probes=probes)
+        verify(info, best, limit, probes=probes)
         print('正在保存到源目录并校验文件……', flush=True)
         result = publish(best, source)
         print('保存校验通过：文件大小和 SHA-256 一致。', flush=True)
@@ -467,10 +577,12 @@ def launch(files):
 
 
 def main():
-    """Run a serialized batch and return a nonzero status if any file fails.
+    """Run serialized videos, then check updates outside the batch lock.
 
-    The installation-wide lock also covers the optional CLI update check,
-    preventing this tool's queued tasks from using a binary being replaced.
+    Return a nonzero status if any file fails. Release the batch lock
+    before checking updates or waiting for consent. The updater locks
+    version probes and approved installation, so an unanswered prompt
+    cannot block this tool's queued video jobs.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--launch', action='store_true')
@@ -495,11 +607,11 @@ def main():
             except (RuntimeError, OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
                 failures += 1
                 print(f'\n失败：{filename}\n{error}', file=sys.stderr, flush=True)
-        with task_log('update'):
-            try:
-                cli_update.check_for_updates(Path(tool('HandBrakeCLI')), ROOT)
-            except (OSError, RuntimeError) as error:
-                print(f'HandBrakeCLI 更新检查未完成：{error}。已完成的视频不受影响。', file=sys.stderr)
+    with task_log('update'):
+        try:
+            cli_update.check_for_updates(Path(tool('HandBrakeCLI')), ROOT)
+        except (OSError, RuntimeError) as error:
+            print(f'HandBrakeCLI 更新检查未完成：{error}。已完成的视频不受影响。', file=sys.stderr)
     print(f'\n全部处理结束，失败 {failures} 个。', flush=True)
     return int(bool(failures))
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.3-beta.1 — 2026-11-24
+
+- Package the four queue, probing, metadata-reuse, and sharing-privacy
+  improvements as ClipFitTT Beta 0.9.3 (`0.9.3-beta.1`).
+
+- Disable descriptive metadata and custom track-name passthrough on both
+  output paths; preserve valid language codes and playback metadata, and
+  reject unexpected output tags before publication. Document remaining export
+  timestamps, codec data, and local diagnostic privacy boundaries.
+- Exercise tagged synthetic MOVs through remuxing, HandBrake conversion, and
+  the audio-only AAC retry, checking rotation, SDR color, and source retention.
+- Reuse metadata within each input's private workspace, invalidate entries
+  when candidates change, and retain full pre-publication validation without
+  launching duplicate probes for unchanged remux or transcode results.
+- Bound each ffprobe metadata subprocess to 60 seconds, report actionable
+  timeout errors, continue the batch, and preserve completed local candidates
+  when output validation times out. Encoding duration remains unrestricted.
+- Release the batch queue lock before querying or prompting for HandBrakeCLI
+  updates, allowing queued video jobs to run while consent is pending.
+- Serialize CLI version probes and approved installation with the same queue
+  lock, rechecking the version before installation to avoid duplicate updates
+  or downgrades after another task has updated the CLI.
+
 ## 0.9.2-beta.1 — 2026-11-24
 
 - Update the displayed version to ClipFitTT Beta 0.9.2, technical version

@@ -20,7 +20,8 @@ individual source components have the licenses identified upstream.
 
 `preset.json` was generated with the official HandBrakeCLI 1.11.2 preset
 exporter and modified for this project's H.264/MP4, same-source frame rate,
-no-crop, two-pass, all-audio workflow. Its schema and exported defaults come
+no-crop, two-pass, all-audio workflow with descriptive metadata passthrough
+disabled. Its schema and exported defaults come
 from HandBrake. No independent authorship is claimed for upstream material;
 any applicable upstream GPLv2 terms remain in effect. The project distribution
 uses GPL-2.0-only, with the complete text in LICENSE.

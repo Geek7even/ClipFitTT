@@ -46,7 +46,7 @@ class WorkflowTests(unittest.TestCase):
     def test_remux_at_limit_falls_back_and_never_publishes_oversize(self):
         def pack(source, info, output, log):
             output.write_bytes(b'x' * 100)
-        def encode(source, info, limit, working, log):
+        def encode(source, info, limit, working, log, *, probes=None):
             best = working / 'best.mp4'
             best.write_bytes(b'fits')
             return best
@@ -110,6 +110,9 @@ class UpdateTests(unittest.TestCase):
 
     def setUp(self):
         """Provide a newer mock release and intercept update side effects."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
         self.release = dict(version='1.12.0', url='https://github.com/HandBrake/HandBrake/releases/download/1.12.0/HandBrakeCLI-1.12.0.dmg', sha256='0' * 64)
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(cli_update, 'binary_version', return_value='1.11.2').start()
@@ -122,29 +125,29 @@ class UpdateTests(unittest.TestCase):
 
     def test_default_decline_never_downloads_or_installs(self):
         with mock.patch('builtins.input', return_value=''):
-            self.assertEqual(cli_update.check_for_updates(Path('CLI'), Path('.')), 'declined')
+            self.assertEqual(cli_update.check_for_updates(Path('CLI'), self.root), 'declined')
         self.install.assert_not_called()
 
     def test_only_explicit_yes_installs(self):
         with mock.patch('builtins.input', return_value='y'):
-            self.assertEqual(cli_update.check_for_updates(Path('CLI'), Path('.')), 'updated')
+            self.assertEqual(cli_update.check_for_updates(Path('CLI'), self.root), 'updated')
         self.install.assert_called_once()
 
     def test_noninteractive_never_installs(self):
         cli_update.sys.stdin.isatty.return_value = False
         with mock.patch('builtins.input', side_effect=AssertionError('must not prompt')):
-            self.assertEqual(cli_update.check_for_updates(Path('CLI'), Path('.')), 'deferred')
+            self.assertEqual(cli_update.check_for_updates(Path('CLI'), self.root), 'deferred')
         self.install.assert_not_called()
 
     def test_current_version_never_prompts(self):
         self.release['version'] = '1.11.2'
         with mock.patch('builtins.input', side_effect=AssertionError('must not prompt')):
-            self.assertEqual(cli_update.check_for_updates(Path('CLI'), Path('.')), 'current')
+            self.assertEqual(cli_update.check_for_updates(Path('CLI'), self.root), 'current')
         self.install.assert_not_called()
 
     def test_network_failure_does_not_fail_finished_video(self):
         with mock.patch.object(cli_update, 'latest_release', side_effect=TimeoutError('offline')):
-            self.assertEqual(cli_update.check_for_updates(Path('CLI'), Path('.')), 'failed')
+            self.assertEqual(cli_update.check_for_updates(Path('CLI'), self.root), 'failed')
         self.install.assert_not_called()
 
     def test_bad_download_digest_is_rejected(self):

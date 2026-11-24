@@ -1,8 +1,8 @@
 # Publishing a ClipFitTT source release
 
-Current release: **ClipFitTT Beta 0.9.2**, technical version **0.9.2-beta.1**.
+Current release: **ClipFitTT Beta 0.9.3**, technical version **0.9.3-beta.1**.
 Treat this package as a pre-release. The complete version is read from VERSION;
-the workflow's numeric Apple version field uses 0.9.2, with the complete beta
+the workflow's numeric Apple version field uses 0.9.3, with the complete beta
 identifier retained separately in ClipFitTTVersion.
 
 Every GitHub push requires the privacy review in AGENTS.md, even for small
@@ -29,7 +29,7 @@ git config --local user.email 'YOUR_GITHUB_NOREPLY_EMAIL'
 git add .
 git diff --cached --stat
 git diff --cached
-git commit -m 'Prepare ClipFitTT 0.9.2-beta.1'
+git commit -m 'Prepare ClipFitTT 0.9.3-beta.1'
 git remote add origin https://github.com/YOUR_ACCOUNT/clipfittt.git
 git push -u origin main
 ```
@@ -37,10 +37,10 @@ git push -u origin main
 Optional release tag, after the initial push:
 
 ```sh
-git tag -a v0.9.2-beta.1 -m 'ClipFitTT Beta 0.9.2'
-git push origin v0.9.2-beta.1
-git archive --format=zip --prefix=clipfittt-0.9.2-beta.1/ \
-  --output=../clipfittt-0.9.2-beta.1-source.zip v0.9.2-beta.1
+git tag -a v0.9.3-beta.1 -m 'ClipFitTT Beta 0.9.3'
+git push origin v0.9.3-beta.1
+git archive --format=zip --prefix=clipfittt-0.9.3-beta.1/ \
+  --output=../clipfittt-0.9.3-beta.1-source.zip v0.9.3-beta.1
 ```
 
 If the local tag already exists, verify its target before pushing it; do not
@@ -71,3 +71,12 @@ Keep the functional project introduction before the credits. Preserve the legal
 COPYRIGHT/LICENSE information and third-party acknowledgements independently.
 Carry this convention forward in future releases; prepare a new version before
 replacing any already-published versioned archive or tag.
+
+## Version announcements
+
+For every version bump, tell the user the previous version, new display name,
+complete technical version, prerelease identifier, and intended Git tag before
+making changes and in the completion report. For this release these are
+`0.9.2-beta.1`, `ClipFitTT Beta 0.9.3`, `0.9.3-beta.1`, `beta.1`, and
+`v0.9.3-beta.1`, respectively. Keep beta releases marked as prereleases.
+A version bump alone does not authorize a GitHub push or local deployment.

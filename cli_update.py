@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 """Check for HandBrakeCLI updates and install with explicit consent."""
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
 import os
@@ -106,7 +108,9 @@ def validate_candidate(binary, version, root):
         raise ValueError('安装包中的 CLI 版本与发布信息不符。')
     result = subprocess.run([str(binary), '--help'], capture_output=True,
                             text=True, check=True, timeout=15)
-    if not all(flag in result.stdout + result.stderr for flag in ('--multi-pass', '--crop-mode')):
+    required = ('--multi-pass', '--crop-mode', '--no-metadata',
+                '--no-keep-aname', '--no-keep-subname')
+    if not all(flag in result.stdout + result.stderr for flag in required):
         raise ValueError('新版 CLI 不支持当前压缩参数，保持原版本。')
     # Exercise preset import/export without encoding a video.
     subprocess.run([str(binary), '--preset-import-file', str(root / 'preset.json'),
@@ -197,16 +201,38 @@ def install_release(release, binary, root):
             shutil.rmtree(directory, ignore_errors=True)
 
 
+@contextmanager
+def queue_lock(root, *, shared=False):
+    """Protect CLI access with the installation's queue lock.
+
+    Shared reads exclude installation and encoding's exclusive lock.
+    Updates require an exclusive lock, including the version recheck.
+    Release either lock on failure or cancellation. Never hold it during
+    a prompt or the release-metadata request.
+    """
+    mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+    with (root / '.queue.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, mode | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('已有压缩或安装任务，等待完成后检查或更新 HandBrakeCLI……', flush=True)
+            fcntl.flock(lock, mode)
+        yield
+
+
 def check_for_updates(binary, root):
-    """Check once, request explicit consent, and return an update status.
+    """Check once, request consent, and return an update status.
 
     Return current, deferred, declined, updated, cancelled, or failed.
-    Noninteractive runs never install. Update failures are reported rather
-    than propagated, so a completed video batch remains successful.
+    Noninteractive runs never install. Report update failures without
+    propagating them, so a completed video batch remains successful.
+    Call without the queue lock: only local version probes and
+    installation acquire it, leaving queued jobs free during user input.
     """
     print('\n正在检查 HandBrakeCLI 更新……', flush=True)
     try:
-        current = binary_version(binary)
+        with queue_lock(root, shared=True):
+            current = binary_version(binary)
         release = latest_release()
         print(f'HandBrakeCLI：当前 {current}；官方稳定版 {release["version"]}', flush=True)
         if version_tuple(release['version']) <= version_tuple(current):
@@ -220,7 +246,14 @@ def check_for_updates(binary, root):
         if answer.strip().lower() not in ('y', 'yes'):
             print('已跳过更新，保留当前版本。', flush=True)
             return 'declined'
-        install_release(release, binary, root)
+        with queue_lock(root):
+            # Another batch may have installed this or a newer version
+            # while this window waited for consent or the queue lock.
+            current = binary_version(binary)
+            if version_tuple(release['version']) <= version_tuple(current):
+                print(f'HandBrakeCLI 已是 {current}，无需重复更新。', flush=True)
+                return 'current'
+            install_release(release, binary, root)
         return 'updated'
     except KeyboardInterrupt:
         print('\n已取消更新，已完成的视频不受影响。', flush=True)

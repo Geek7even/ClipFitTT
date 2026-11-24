@@ -29,7 +29,28 @@ These files are generated on the user's computer and are excluded by
 `.gitignore`. Logs older than seven days by modification time are removed
 before the next file is processed; this is not a background timer. Recovery
 videos remain until manually recovered or deleted. Source/output media
-metadata is retained where supported and may itself contain private data.
+may contain private content even after the sharing metadata cleanup below.
+
+## Sharing metadata
+
+Both remuxing and HandBrake transcoding disable source descriptive metadata
+and custom track-name passthrough. Remuxing whitelists three-letter stream
+language codes instead of copying stream tag dictionaries. Source capture
+locations/dates, device descriptions, author/title/comment fields, and custom
+track names are not intentionally transferred to the output. Output container
+and stream tags are checked against a whitelist before publication; unexpected
+descriptive fields or custom handler names cause the output to be rejected.
+
+Structural MP4 tags, generic encoder/handler information, language codes, and
+HandBrake's newly generated export timestamps may remain. Rotation/display
+matrices and codec color information are playback data, not descriptive tags;
+the metadata cleanup does not strip them. The existing lossy encoding and
+frame/geometry validation policies still apply. Source files are not modified.
+
+This is metadata minimization, not complete anonymization. It does not redact
+faces, voices, text within the video, filenames, or user data embedded inside
+copied codec bitstreams. It also does not anonymize local logs or recovery
+files, which can still contain private paths or complete media.
 
 Review and redact diagnostics, media metadata, and screenshots before posting
 an issue. Never attach customer media or a complete unreviewed process log.
