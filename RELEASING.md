@@ -74,9 +74,16 @@ replacing any already-published versioned archive or tag.
 
 ## Version announcements
 
-For every version bump, tell the user the previous version, new display name,
-complete technical version, prerelease identifier, and intended Git tag before
-making changes and in the completion report. For this release these are
-`0.9.2-beta.1`, `ClipFitTT Beta 0.9.3`, `0.9.3-beta.1`, `beta.1`, and
-`v0.9.3-beta.1`, respectively. Keep beta releases marked as prereleases.
+When asked to upgrade the version, first read VERSION and report the current
+project version. Recommend an appropriate next version with a brief reason,
+then ask the user to select or confirm it. Wait for that explicit selection
+before changing version files, renaming release folders, committing/tagging
+a release, or building its package. The request to upgrade alone is not a
+selection of the recommendation. Distinguish the installed version from the
+project version when they differ.
+
+After selection, report the old/new display names, complete technical version,
+prerelease identifier, and Git tag in the completion report. Keep beta releases
+marked as prereleases. For reference, this package is ClipFitTT Beta 0.9.3,
+`0.9.3-beta.1`, with identifier `beta.1` and tag `v0.9.3-beta.1`.
 A version bump alone does not authorize a GitHub push or local deployment.
