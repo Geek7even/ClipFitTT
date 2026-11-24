@@ -2,7 +2,7 @@
   "PresetList": [
     {
       "AlignAVStart": false,
-      "AudioAutomaticNamingBehavior": "unnamed",
+      "AudioAutomaticNamingBehavior": "off",
       "AudioCopyMask": [
         "copy:aac",
         "copy:ac3",

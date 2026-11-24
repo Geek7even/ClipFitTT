@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.3-beta.2 — 2026-11-24
+
+- Disable HandBrake's automatic audio naming in both preset and CLI options.
+  Unnamed stereo tracks can otherwise acquire generated name/handler tags
+  that are rejected by the strict sharing metadata policy.
+- Add synthetic regression coverage for unknown-language unnamed stereo,
+  with and without timecode, without relaxing metadata validation.
+
 ## 0.9.3-beta.1 — 2026-11-24
 
 - Package the four queue, probing, metadata-reuse, and sharing-privacy

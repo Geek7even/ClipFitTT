@@ -59,9 +59,15 @@ class MetadataTests(unittest.TestCase):
         self.info['video']['tags']['creation_time'] = '2026-01-01T00:00:00Z'
         compress.verify_metadata(self.info)
 
+    def test_generated_layout_name_still_fails_strict_metadata_policy(self):
+        self.info['audio'][0]['tags'].update(name='Stereo', handler_name='Stereo')
+        with self.assertRaisesRegex(RuntimeError, '轨道元数据'):
+            compress.verify_metadata(self.info)
+
     def test_cli_without_privacy_flags_is_rejected_before_preset_probe(self):
         flags = ['--multi-pass', '--crop-mode', '--no-metadata',
-                 '--no-keep-aname', '--no-keep-subname']
+                 '--no-keep-aname', '--no-keep-subname',
+                 '--automatic-naming-behaviour']
         for missing in flags[2:]:
             with self.subTest(missing=missing):
                 help_text = ' '.join(flag for flag in flags if flag != missing)

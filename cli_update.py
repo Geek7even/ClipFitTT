@@ -109,7 +109,8 @@ def validate_candidate(binary, version, root):
     result = subprocess.run([str(binary), '--help'], capture_output=True,
                             text=True, check=True, timeout=15)
     required = ('--multi-pass', '--crop-mode', '--no-metadata',
-                '--no-keep-aname', '--no-keep-subname')
+                '--no-keep-aname', '--no-keep-subname',
+                '--automatic-naming-behaviour')
     if not all(flag in result.stdout + result.stderr for flag in required):
         raise ValueError('新版 CLI 不支持当前压缩参数，保持原版本。')
     # Exercise preset import/export without encoding a video.

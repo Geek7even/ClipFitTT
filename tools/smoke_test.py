@@ -101,6 +101,34 @@ def check_sharing_metadata(module, media, ffmpeg):
             assert result['audio'][0]['codec_name'] == 'aac'
 
 
+def check_unnamed_audio(module, media, ffmpeg):
+    """Check unnamed stereo against strict sharing metadata rules.
+
+    Unknown-language stereo without a source track name reproduced the
+    regression. Test both timecoded and plain MP4 inputs, leaving the
+    strict output metadata validator enabled throughout.
+    """
+    for timecoded in (False, True):
+        source = media / f'unnamed-audio-{timecoded}.mp4'
+        command = [ffmpeg, '-v', 'error', '-f', 'lavfi', '-i',
+                   'testsrc2=size=320x180:rate=25', '-f', 'lavfi', '-i',
+                   'sine=frequency=440:sample_rate=48000', '-t', '1',
+                   '-c:v', 'mpeg4', '-c:a', 'aac', '-ac', '2',
+                   '-metadata:s:a:0', 'language=und']
+        if timecoded:
+            command += ['-timecode', '00:00:00:00']
+        run([*command, source])
+        original = module.probe(source)
+        assert original['audio'][0]['tags']['language'] == 'und'
+        assert 'name' not in original['audio'][0].get('tags', {})
+        with contextlib.redirect_stdout(io.StringIO()):
+            output = module.compress(source, 1_000_000)
+        result = module.verify(original, output, 1_000_000)
+        tags = result['audio'][0]['tags']
+        assert tags['handler_name'] == 'SoundHandler'
+        assert 'name' not in tags
+
+
 def main():
     """Exercise installation and media processing in temporary directories.
 
@@ -149,6 +177,7 @@ def main():
         assert remux_info['video']['codec_name'] == 'h264'
         assert module.probe(other)['video']['codec_name'] != 'h264'
         check_sharing_metadata(module, media, ffmpeg)
+        check_unnamed_audio(module, media, ffmpeg)
         # Reinstallation must retain recovery data and dependency selection.
         recovery = app / 'work' / 'keep.txt'
         recovery.write_text('recovery data')
@@ -171,6 +200,7 @@ def main():
         print('timestamped logs, recovery retention, and workflow/User-Agent version metadata.')
         print('Probe reuse: remux uses two probes; transcode uses one per attempt plus the source.')
         print('Sharing metadata: tagged MOV remux, transcode, AAC retry, rotation/color, and source retention.')
+        print('Unnamed stereo: unknown language, with/without timecode, strict metadata checks passed.')
         print('No service registration or network request.')
 
 

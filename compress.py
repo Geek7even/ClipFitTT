@@ -448,6 +448,7 @@ def transcode(source, info, limit, working, log, *, probes=None):
     previous = None
     for attempt in range(1, 5):
         print(f'第 {attempt} 次编码：视频 {video_kbps} kbps，音频每轨 {audio_kbps} kbps', flush=True)
+        # Disable layout names along with source-name passthrough.
         command = [tool('HandBrakeCLI'), '--preset-import-file', str(ROOT / 'preset.json'),
                    '-Z', 'ClipFitTT', '-i', str(source), '-o', str(candidate),
                    '--min-duration', '0', '-f', 'av_mp4', '-e', 'x264',
@@ -456,7 +457,8 @@ def transcode(source, info, limit, working, log, *, probes=None):
                    '--crop', '0:0:0:0', '--no-comb-detect', '--no-decomb',
                    '--no-deinterlace', '--no-detelecine', '--no-markers',
                    '--optimize', '--subtitle', 'none',
-                   '--no-metadata', '--no-keep-aname', '--no-keep-subname']
+                   '--no-metadata', '--no-keep-aname', '--no-keep-subname',
+                   '--automatic-naming-behaviour', 'off']
         if count:
             command += ['--all-audio', '-E', 'ca_aac', '-B', str(audio_kbps),
                         '--mixdown', 'stereo']
