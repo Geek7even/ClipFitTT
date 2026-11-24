@@ -20,6 +20,7 @@ runtime_config.json
 *.dmg
 *.zip
 *.previous
+*.dylib
 tests/*verification.json
 .env
 .env.*

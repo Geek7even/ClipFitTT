@@ -103,7 +103,7 @@ class ProbeTests(unittest.TestCase):
         logs = list((self.root / 'logs').glob('*__process__*.log'))
         self.assertEqual(len(logs), 2)
         self.assertTrue(any('媒体信息探测超时（60 秒）' in path.read_text() for path in logs))
-        self.assertTrue(any('保存校验通过' in path.read_text() for path in logs))
+        self.assertTrue(any('publish_completed' in path.read_text() for path in logs))
         updater.assert_called_once()
 
     def test_output_probe_timeout_keeps_completed_candidate(self):

@@ -194,10 +194,15 @@ def main():
         assert info['CFBundleShortVersionString'] == version.partition('-')[0]
         assert info['ClipFitTTVersion'] == version
         assert module.cli_update.request(module.cli_update.RELEASE_API).get_header('User-agent') == f'ClipFitTT/{version}'
-        assert list((app / 'logs').glob('*__process__*.log'))
+        assert not list((app / 'logs').glob('*__diagnostic__*.log'))
+        if (app / 'bin' / module.app_logging.BRIDGE_NAME).exists():
+            module.app_logging.NativeBackend(app)
+            assert not list((app / 'logs').glob('*__fallback__process__*.log'))
+        else:
+            assert list((app / 'logs').glob('*__fallback__process__*.log'))
         print('PASS: isolated install/reinstall, runtime dependency paths, generated workflow,')
         print('H.264 remux packet identity, non-H.264 conversion, size/geometry/frame checks,')
-        print('timestamped logs, recovery retention, and workflow/User-Agent version metadata.')
+        print('hybrid logging, recovery retention, and workflow/User-Agent version metadata.')
         print('Probe reuse: remux uses two probes; transcode uses one per attempt plus the source.')
         print('Sharing metadata: tagged MOV remux, transcode, AAC retry, rotation/color, and source retention.')
         print('Unnamed stereo: unknown language, with/without timecode, strict metadata checks passed.')

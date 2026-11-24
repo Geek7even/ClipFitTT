@@ -54,7 +54,7 @@ class WorkflowTests(unittest.TestCase):
             output = compress.compress(self.source, 100)
         self.assertEqual(output.read_bytes(), b'fits')
         transcode.assert_called_once()
-        self.assertIn('自动转入', next((self.root / 'logs').glob('*.log')).read_text())
+        self.assertIn('remux_oversize', next((self.root / 'logs').glob('*.log')).read_text())
 
     def test_small_non_h264_transcodes(self):
         self.info['video']['codec_name'] = 'hevc'
@@ -100,7 +100,7 @@ class WorkflowTests(unittest.TestCase):
         logs = list((self.root / 'logs').glob('*.log'))
         self.assertEqual(len(logs), 2)
         for path in logs:
-            self.assertRegex(path.name, r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}__process__.+\.log$')
+            self.assertRegex(path.name, r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}__diagnostic__process__.+\.log$')
             self.assertNotIn('source', path.name)
             self.assertIn('specific failure', path.read_text())
 

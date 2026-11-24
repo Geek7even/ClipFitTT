@@ -7,7 +7,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-BLOCKED_SUFFIXES = {'.mp4', '.mov', '.m4v', '.dmg', '.zip', '.log', '.pyc'}
+BLOCKED_SUFFIXES = {'.mp4', '.mov', '.m4v', '.dmg', '.zip', '.log', '.pyc',
+                    '.dylib', '.so', '.o'}
 BLOCKED_PARTS = {'vendor', 'bin', 'logs', 'work', 'third_party', '__pycache__', '.build', '.aws', '.ssh', '.codex', '.agents'}
 PATTERNS = {
     'absolute user or mounted-volume path': re.compile(r'/(?:Users|Volumes)/[A-Za-z0-9_\u4e00-\u9fff][^\s"\'<>]*'),

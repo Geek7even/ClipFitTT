@@ -14,6 +14,8 @@ import tempfile
 import time
 import urllib.request
 
+import app_logging
+
 RELEASE_API = 'https://api.github.com/repos/HandBrake/HandBrake/releases/latest'
 
 
@@ -231,20 +233,25 @@ def check_for_updates(binary, root):
     installation acquire it, leaving queued jobs free during user input.
     """
     print('\n正在检查 HandBrakeCLI 更新……', flush=True)
+    app_logging.event('update_started', category='update')
     try:
         with queue_lock(root, shared=True):
             current = binary_version(binary)
         release = latest_release()
         print(f'HandBrakeCLI：当前 {current}；官方稳定版 {release["version"]}', flush=True)
         if version_tuple(release['version']) <= version_tuple(current):
+            app_logging.event('update_completed', category='update', status='current')
             print('HandBrakeCLI 无需更新。', flush=True)
             return 'current'
         if not sys.stdin.isatty():
+            app_logging.event('update_completed', category='update', status='deferred',
+                              reason='noninteractive')
             # Redirected input must never be treated as update approval.
             print('发现新版；当前为非交互运行，未执行更新。请从右键命令运行以确认更新。', flush=True)
             return 'deferred'
         answer = input(f'是否将 HandBrakeCLI 从 {current} 更新至 {release["version"]}？[y/N] ')
         if answer.strip().lower() not in ('y', 'yes'):
+            app_logging.event('update_completed', category='update', status='declined')
             print('已跳过更新，保留当前版本。', flush=True)
             return 'declined'
         with queue_lock(root):
@@ -252,14 +259,19 @@ def check_for_updates(binary, root):
             # while this window waited for consent or the queue lock.
             current = binary_version(binary)
             if version_tuple(release['version']) <= version_tuple(current):
+                app_logging.event('update_completed', category='update', status='current')
                 print(f'HandBrakeCLI 已是 {current}，无需重复更新。', flush=True)
                 return 'current'
             install_release(release, binary, root)
+        app_logging.event('update_completed', category='update', status='updated')
         return 'updated'
     except KeyboardInterrupt:
+        app_logging.event('update_completed', category='update', status='cancelled')
         print('\n已取消更新，已完成的视频不受影响。', flush=True)
         return 'cancelled'
     except Exception as error:
+        app_logging.event('update_failed', category='update', level='error',
+                          status='failed', private_detail=str(error))
         print(f'HandBrakeCLI 更新检查或更新未完成：{error}。已完成的视频不受影响。',
               file=sys.stderr, flush=True)
         return 'failed'

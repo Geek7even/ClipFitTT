@@ -21,8 +21,12 @@ An unavailable network is reported without invalidating completed videos.
 
 - Generated `.workflow` and `runtime_config.json`: absolute interpreter,
   dependency, and installation paths, potentially including a local username.
-- Process logs: source/output paths, filenames, codec data, commands, and errors.
-  Log filenames omit source names, but log **contents are not anonymized**.
+- Failure diagnostics: a bounded tail of source/output paths, filenames,
+  codec data, commands, and errors. Filenames omit source names, but diagnostic
+  **contents are not anonymized**. Each file is capped at 324 KiB and created
+  with mode 0600. Earlier output may be omitted, so it is not a full transcript.
+- Successful fallback logs: controlled events only; raw terminal/tool output
+  and private detail fields are not written to these files.
 - Recovery data in `work/`: complete processed video if saving fails.
 
 These files are generated on the user's computer and are excluded by
@@ -30,6 +34,26 @@ These files are generated on the user's computer and are excluded by
 before the next file is processed; this is not a background timer. Recovery
 videos remain until manually recovered or deleted. Source/output media
 may contain private content even after the sharing metadata cleanup below.
+
+## macOS Unified Logging
+
+The optional local bridge uses the subsystem
+`io.github.geek7even.clipfittt`. Public fields contain controlled event names,
+version, random batch/task identifiers, counts, sizes, durations, and finite
+status/reason values. Paths, exception details, and actual metadata are sent
+only through explicit private fields, hidden by default. Tool transcripts
+are not streamed into Unified Logging. Public technical fields may still
+reveal activity patterns; private-field formatting is not anonymization.
+
+The operating system manages retention and access. Seven-day file cleanup
+does not delete unified events, and system retention is not guaranteed to
+last seven days. Info/debug events need not be persisted. Administrators
+may configure different privacy/access policies; exported records can also
+include system image/library paths. Review exports before sharing them.
+ClipFitTT does not enable private-data collection or change system logging
+configuration. It compiles its bridge only when build tools are already
+available and never installs those tools. Missing or unusable native logging
+falls back to bounded local files without failing the media operation.
 
 ## Sharing metadata
 

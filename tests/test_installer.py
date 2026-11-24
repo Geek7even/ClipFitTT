@@ -122,6 +122,27 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 install.choose_cli(str(Path(directory) / 'missing'), Path(directory))
 
+    def test_native_bridge_replacement_rolls_back_with_service_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stage, workflow = self.make_stage(root)
+            library = install.app_logging.BRIDGE_NAME
+            (stage / 'bin' / library).write_bytes(b'new bridge')
+            app, services = root / 'app', root / 'services'
+            (app / 'bin').mkdir(parents=True)
+            (app / 'bin' / library).write_bytes(b'old bridge')
+            replace = install.os.replace
+
+            def fail_workflow(source, target):
+                if Path(target) == services / workflow.name:
+                    raise OSError('service install failed')
+                return replace(source, target)
+
+            with mock.patch.object(install.os, 'replace', side_effect=fail_workflow):
+                with self.assertRaises(OSError):
+                    install.commit_install(stage, workflow, app, services)
+            self.assertEqual((app / 'bin' / library).read_bytes(), b'old bridge')
+
 
 if __name__ == '__main__':
     unittest.main()

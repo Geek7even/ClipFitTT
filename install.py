@@ -11,13 +11,15 @@ import subprocess
 import sys
 import tempfile
 
+import app_logging
 import build_service
 import cli_update
 
 ROOT = Path(__file__).resolve().parent
 MINIMUM_CLI = '1.11.2'
 # Explicit ownership keeps reinstalls from replacing logs or recovery media.
-MANAGED_FILES = ('cli_update.py', 'compress.py', 'preset.json', 'README.md', 'DESCRIPTION.txt',
+MANAGED_FILES = ('app_logging.py', 'oslog_bridge.c', 'cli_update.py', 'compress.py',
+                 'preset.json', 'README.md', 'DESCRIPTION.txt',
                  'LICENSE', 'COPYRIGHT', 'THIRD_PARTY_NOTICES.md', 'PRIVACY.md',
                  'CONTRIBUTING.md', 'RELEASING.md', 'CHANGELOG.md', 'VERSION')
 
@@ -98,6 +100,8 @@ def commit_install(stage, workflow, destination, services):
     with tempfile.TemporaryDirectory(prefix='.install-backup-', dir=destination.parent) as saved:
         saved = Path(saved)
         entries = [Path(name) for name in (*MANAGED_FILES, 'runtime_config.json', 'bin/HandBrakeCLI')]
+        if (stage / 'bin' / app_logging.BRIDGE_NAME).is_file():
+            entries.append(Path('bin') / app_logging.BRIDGE_NAME)
         if (stage / 'third_party').exists():
             entries.extend(path.relative_to(stage) for path in (stage / 'third_party').rglob('*') if path.is_file())
         changed = []
@@ -170,38 +174,45 @@ def install(args):
     services = Path(args.services_dir).expanduser().absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.mkdir(exist_ok=True)
-    with (destination / '.queue.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        local_cli = choose_cli(args.handbrake, destination)
-        allow_download = args.download_cli
-        if local_cli is None and not allow_download:
-            if sys.stdin.isatty():
-                allow_download = input('未找到可用 CLI。从 HandBrake 官方发布下载并校验？[y/N] ').strip().lower() in ('y', 'yes')
-            if not allow_download:
-                raise RuntimeError('请安装 HandBrakeCLI，使用 --handbrake 指定路径，或明确添加 --download-cli。')
-        with tempfile.TemporaryDirectory(prefix='.clipfittt-install-', dir=destination.parent) as directory:
-            stage = Path(directory)
-            (stage / 'bin').mkdir()
-            for name in MANAGED_FILES:
-                shutil.copy2(ROOT / name, stage / name)
-            if local_cli:
-                shutil.copy2(local_cli, stage / 'bin/HandBrakeCLI')
-            else:
-                cli_update.install_release(cli_update.latest_release(), stage / 'bin/HandBrakeCLI', stage)
-            # Store executable paths locally, outside the published package.
-            (stage / 'runtime_config.json').write_text(json.dumps(tools, indent=2) + '\n')
-            workflow = build_service.build(stage / 'generated', destination, sys.executable)
-            commit_install(stage, workflow, destination, services)
-    if not args.no_register:
-        try:
-            subprocess.run(['/System/Library/CoreServices/pbs', '-update'], check=True, timeout=15)
-        except (OSError, subprocess.SubprocessError) as error:
-            # Registry refresh is separate from the completed file install.
-            print(f'文件已安装，系统服务刷新未完成：{error}。请注销后重新登录以刷新菜单。', file=sys.stderr)
-    version = (ROOT / 'VERSION').read_text().strip()
-    print(f'{build_service.display_version(version)}（{version}）')
-    print(f'已安装：{services / (build_service.NAME + ".workflow")}\n程序：{destination}')
-    print('安装路径仅保存在本机生成文件中；无需 sudo。')
+    with app_logging.task_scope(destination, 'install',
+                                version=(ROOT / 'VERSION').read_text().strip()):
+        with (destination / '.queue.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            local_cli = choose_cli(args.handbrake, destination)
+            allow_download = args.download_cli
+            if local_cli is None and not allow_download:
+                if sys.stdin.isatty():
+                    allow_download = input('未找到可用 CLI。从 HandBrake 官方发布下载并校验？[y/N] ').strip().lower() in ('y', 'yes')
+                if not allow_download:
+                    raise RuntimeError('请安装 HandBrakeCLI，使用 --handbrake 指定路径，或明确添加 --download-cli。')
+            with tempfile.TemporaryDirectory(prefix='.clipfittt-install-', dir=destination.parent) as directory:
+                stage = Path(directory)
+                (stage / 'bin').mkdir()
+                for name in MANAGED_FILES:
+                    shutil.copy2(ROOT / name, stage / name)
+                native_logging = app_logging.build_native(stage, ROOT / 'oslog_bridge.c')
+                app_logging.event('logging_backend_prepared', category='install',
+                                  status='native' if native_logging else 'fallback')
+                print('统一日志桥接已准备。' if native_logging else
+                      '统一日志桥接暂不可用，继续使用文件日志回退。', flush=True)
+                if local_cli:
+                    shutil.copy2(local_cli, stage / 'bin/HandBrakeCLI')
+                else:
+                    cli_update.install_release(cli_update.latest_release(), stage / 'bin/HandBrakeCLI', stage)
+                # Store executable paths locally, outside the published package.
+                (stage / 'runtime_config.json').write_text(json.dumps(tools, indent=2) + '\n')
+                workflow = build_service.build(stage / 'generated', destination, sys.executable)
+                commit_install(stage, workflow, destination, services)
+        if not args.no_register:
+            try:
+                subprocess.run(['/System/Library/CoreServices/pbs', '-update'], check=True, timeout=15)
+            except (OSError, subprocess.SubprocessError) as error:
+                # Registry refresh is separate from the completed file install.
+                print(f'文件已安装，系统服务刷新未完成：{error}。请注销后重新登录以刷新菜单。', file=sys.stderr)
+        version = (ROOT / 'VERSION').read_text().strip()
+        print(f'{build_service.display_version(version)}（{version}）')
+        print(f'已安装：{services / (build_service.NAME + ".workflow")}\n程序：{destination}')
+        print('安装路径仅保存在本机生成文件中；无需 sudo。')
 
 
 def main():

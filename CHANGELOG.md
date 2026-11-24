@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.4-beta.1 — 2026-11-24
+
+- Package the hybrid logging improvements as ClipFitTT Beta 0.9.4
+  (`0.9.4-beta.1`), the first prerelease in the 0.9.4 series.
+
+- Send controlled lifecycle events to macOS Unified Logging through an
+  optional locally compiled bridge, correlating batch and task identifiers.
+  Keep paths and raw metadata in explicit private fields, and fall back to
+  sanitized event files when the native backend is unavailable.
+- Preserve terminal progress and save bounded private diagnostic tails only
+  for failed tasks. Limit each diagnostic file to 324 KiB with mode 0600;
+  retain seven-day cleanup for owned legacy, diagnostic, and fallback files.
+- Drain HandBrake/FFmpeg stdout and stderr concurrently without unbounded
+  transcripts; terminate and reap the child on cancellation. Keep logging
+  failures independent of media results and installer rollback.
+- Add offline failure/privacy tests and optional synthetic native-log and
+  isolated installation/media verification. Exclude native build artifacts
+  from source distributions.
+
 ## 0.9.3-beta.2 — 2026-11-24
 
 - Disable HandBrake's automatic audio naming in both preset and CLI options.

@@ -5,7 +5,7 @@
 通过 Finder 右键即可批量处理 MP4/MOV，将视频重新封装或压缩为 H.264 MP4，
 控制单个文件小于十进制 **100 MB（100,000,000 字节）**，并保留原分辨率与同源帧率，方便后续发送和预览。
 
-当前版本：**ClipFitTT Beta 0.9.3**（`0.9.3-beta.2`，第二个测试版），发布日期 **2026-11-24**。
+当前版本：**ClipFitTT Beta 0.9.4**（`0.9.4-beta.1`，首个测试版），发布日期 **2026-11-24**。
 本项目为独立工具，与 TeamTalk、HandBrake、FFmpeg 无官方隶属或背书关系。
 
 ## 处理规则
@@ -41,6 +41,7 @@ HandBrake 的同源 VFR 模式可能规整部分时间戳；重新封装不经�
 - 可执行的 `ffmpeg`、`ffprobe`。
 - HandBrakeCLI **1.11.2+**；安装器会检查参数与预设兼容性。
 - 首次下载 CLI 和检查更新需要连接 HandBrake 官方 GitHub 发布服务。
+- 可选：已有 Xcode 或 Command Line Tools 时，安装器会在本机编译统一日志桥接库；没有编译器时自动使用文件日志回退，无需安装额外 Python 包。
 
 安装器不安装 Homebrew、不修改系统 Python、不自动安装 FFmpeg，也不更新 HandBrake 图形版。
 如果使用 Homebrew，可先执行 `brew install python ffmpeg`；安装前确认 `python3 --version` 为 3.11+。
@@ -81,15 +82,37 @@ Finder 中选择 MP4/MOV，右键点击 **ClipFitTT — 压缩视频至100MB**�
 
 ## 日志和 CLI 更新
 
-日志在程序目录的 `logs/` 中，文件名不含源文件名，例如：
+关键事件使用 macOS 统一日志，子系统为 `io.github.geek7even.clipfittt`。
+分类包括 `app`、`probe`、`encode`、`publish`、`update`、`install`。
+终端继续显示进度和路径，每批任务和每个处理／更新任务分别显示随机批次编号和任务编号，便于关联事件。
+成功任务在原生日志可用时不另存完整文本日志。可在“控制台”中筛选子系统，或在终端查看：
 
-```text
-2026-11-13_12-30-00__process__a1b2c3d4.log
-2026-11-13_12-30-05__update__e5f6g7h8.log
+```sh
+log show --last 1d --style compact --timezone Asia/Shanghai \
+  --predicate 'subsystem == "io.github.geek7even.clipfittt"'
+log stream --level info --style compact \
+  --predicate 'subsystem == "io.github.geek7even.clipfittt"'
 ```
 
-时间为北京时间，精确到秒；随机标识避免同秒重名。每个源文件一份处理日志，一批任务结束后另有一份更新检查日志。
-每个文件处理前，删除最后修改时间超过 7×24 小时的本工具日志，包括旧的 `encode-*.log`。
+公开事件只包含受控事件名、版本、随机任务编号、数量、大小、耗时和枚举状态；
+路径、异常详情和实际元数据使用原生隐私字段。默认查看时隐私字段被隐藏，但这不等于完整匿名化。
+统一日志由系统管理保留期限，不能保证保存七天；`info`／`debug` 事件也不保证持久保存。
+本工具不改变系统日志配置，不安装编译工具；桥接库缺失、编译失败或无法加载时自动回退。
+
+失败时将原始工具输出和错误的末尾最多 **256 KiB** 保存到程序目录的 `logs/`，另附最多 **64 KiB** 事件缓冲；
+每份文件总量限制为 **324 KiB**，权限为仅当前用户读写（`0600`）。超过缓冲上限的较早内容会被截断。
+原生日志不可用但处理成功时，仅保存受控事件，不保存原始路径和工具输出。
+文件名不含源文件名，例如：
+
+```text
+2026-11-24_12-30-00__diagnostic__process__a1b2c3d4e5f60718__abcdefgh.log
+2026-11-24_12-30-05__fallback__update__1029384756abcdef__ijklmnop.log
+```
+
+时间为北京时间，精确到秒；随机标识避免同秒重名。诊断文件内容可能包含隐私，分享前应审阅。
+每个文件处理前，删除最后修改时间超过 7×24 小时的本工具日志，包括旧格式日志。
+只清理符合工具命名规则的普通文件，不跟随符号链接；这不是后台定时清理。
+七天规则仅适用于上述文件，不影响系统统一日志。每份文件有大小上限，目录总量仍取决于七天内任务数。
 
 每批任务结束后只检查 HandBrakeCLI。发现新版时显示当前/新版本，询问 `[y/N]`；只有 `y`/`yes` 才更新。
 查询官方版本和等待确认时不占用压缩任务锁；确认后等待正在执行的任务完成，重新检查本机 CLI 版本，再按需更新，避免重复更新或降级。
@@ -117,6 +140,14 @@ python3 tools/check_release.py
 ```sh
 python3 tools/smoke_test.py --handbrake /path/to/HandBrakeCLI
 ```
+
+原生日志可选测试需要 macOS、可用编译器和读取系统日志的权限：
+
+```sh
+python3 tools/logging_smoke_test.py
+```
+
+该测试仅发送合成事件，检查编号关联和隐私字段默认隐藏，不修改系统日志配置。
 
 隔离安装示例（不覆盖正常安装、不注册 Finder 服务）：
 

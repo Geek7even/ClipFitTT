@@ -57,3 +57,8 @@ Finder, Automator, Terminal, and system command-line utilities are platform
 components supplied by Apple. This repository generates an Automator workflow
 using plist data and references installed system actions; it does not include
 Apple executable code, action bundles, logos, or application assets.
+
+The optional logging bridge is project source code using Apple's public
+`os/log.h` API. It is compiled locally with an already installed Apple
+toolchain and links to system libraries. Source releases do not redistribute
+Apple SDK headers, toolchains, or compiled bridge libraries.

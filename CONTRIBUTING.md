@@ -13,6 +13,14 @@ Retain upstream notices and identify any new third-party content and license.
 Use synthetic fixtures generated at test time. Read PRIVACY.md before sharing
 diagnostics. Intel/macOS-version test results should state what was actually tested.
 
+For logging changes, cover bounded storage, privacy field filtering, missing
+or failing native backends, concurrent pipe draining, and cancellation.
+Run `python3 tools/logging_smoke_test.py` on macOS when a compiler and log
+stream access are available. It uses synthetic events and must not change
+system logging settings. Generated native libraries are local build artifacts;
+publish the bridge source, not the compiled library. Keep installation usable
+without a compiler and avoid adding mandatory pip dependencies.
+
 Before every GitHub push, including documentation-only changes, complete the
 mandatory privacy review in AGENTS.md. Sanitize the entire outgoing commit
 range and publication assets, then rescan; reviewing only the working tree is

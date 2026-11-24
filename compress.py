@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 """Prepare videos for mobile preview within decimal byte limits."""
 import argparse
-from contextlib import contextmanager, redirect_stdout, redirect_stderr
-from datetime import datetime
+from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
@@ -18,8 +17,8 @@ import sys
 import tempfile
 import time
 from fractions import Fraction
-from zoneinfo import ZoneInfo
 
+import app_logging
 import cli_update
 
 ROOT = Path(__file__).resolve().parent
@@ -33,75 +32,20 @@ PROBE_TIMEOUT_SECONDS = 60
 FORMAT_TAGS = frozenset({'major_brand', 'minor_version', 'compatible_brands',
                          'encoder', 'creation_time'})
 STREAM_TAGS = frozenset({'language', 'handler_name', 'creation_time'})
-# Apply log retention only to names owned by this tool.
-LOG_PATTERN = re.compile(r'^(?:encode-[A-Za-z0-9_-]+|\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}__(?:process|update)__[A-Za-z0-9_-]+)\.log$')
-
-
-class Tee:
-    """Mirror text to the original console and a task's open log stream."""
-
-    def __init__(self, console, log):
-        """Retain the caller-owned console and log streams."""
-        self.console, self.log = console, log
-
-    def write(self, text):
-        """Write to both streams and flush diagnostics before returning."""
-        self.console.write(text)
-        self.log.write(text)
-        self.log.flush()
-        return len(text)
-
-    def flush(self):
-        """Flush both destinations without closing either stream."""
-        self.console.flush()
-        self.log.flush()
-
-    def isatty(self):
-        """Report the console's interactivity rather than the log file's."""
-        return self.console.isatty()
+# Retain the cleanup entry point for legacy logs and local diagnostics.
+LOG_PATTERN = app_logging.LOG_PATTERN
 
 
 def clean_logs(now=None):
-    """Remove owned logs older than seven days and return their count.
-
-    Args:
-        now: Optional epoch timestamp for deterministic retention checks.
-
-    Use modification time, ignore symlinks and unrelated filenames, and
-    report individual deletion failures without stopping video processing.
-    """
-    logs = ROOT / 'logs'
-    logs.mkdir(exist_ok=True)
-    cutoff = (time.time() if now is None else now) - 7 * 24 * 60 * 60
-    removed = 0
-    for path in logs.iterdir():
-        if not LOG_PATTERN.fullmatch(path.name) or path.is_symlink() or not path.is_file():
-            continue
-        try:
-            if path.stat().st_mtime < cutoff:
-                path.unlink()
-                removed += 1
-        except OSError as error:
-            print(f'日志清理未完成：{path.name}：{error}', file=sys.stderr)
-    return removed
+    """Prune owned diagnostic/legacy files without failing a media task."""
+    return app_logging.clean_logs(ROOT, now)
 
 
 @contextmanager
 def task_log(kind='process'):
-    """Yield a unique log path while mirroring console output into it.
-
-    Names use Beijing time and omit source filenames. The temporary-file
-    suffix prevents collisions between tasks started within the same second.
-    """
-    logs = ROOT / 'logs'
-    logs.mkdir(exist_ok=True)
-    stamp = datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d_%H-%M-%S')
-    fd, name = tempfile.mkstemp(prefix=f'{stamp}__{kind}__', suffix='.log', dir=logs)
-    path = Path(name)
-    with os.fdopen(fd, 'a', encoding='utf-8', buffering=1) as handle:
-        with redirect_stdout(Tee(sys.stdout, handle)), redirect_stderr(Tee(sys.stderr, handle)):
-            print(f'开始时间：{datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")}\n日志：{path}', flush=True)
-            yield path
+    """Yield a correlated task with bounded, failure-only raw diagnostics."""
+    with app_logging.task_scope(ROOT, kind) as task:
+        yield task
 
 
 def tool(name):
@@ -136,18 +80,29 @@ def probe(path):
     I/O or encoding. Other probe/parse errors propagate to the per-file
     error handler, allowing the batch to continue.
     """
+    started = time.monotonic()
+    app_logging.event('probe_started', category='probe', level='info')
     try:
         result = subprocess.run([tool('ffprobe'), '-v', 'error', '-show_format',
                                  '-show_streams', '-of', 'json', str(path)],
                                 capture_output=True, text=True, check=True,
                                 timeout=PROBE_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
+        app_logging.event('probe_failed', category='probe', level='error',
+                          reason='timeout', private_detail=str(path))
         # Reuse batch error handling and best.mp4 recovery for
         # timeouts during either source or output inspection.
         raise RuntimeError(
             f'媒体信息探测超时（{PROBE_TIMEOUT_SECONDS} 秒）：{path}。'
             '请检查网络、NAS 挂载或源文件，确认后重试。'
         ) from error
+    except (OSError, subprocess.SubprocessError) as error:
+        app_logging.event('probe_failed', category='probe', level='error',
+                          reason='nonzero_exit' if isinstance(
+                              error, subprocess.CalledProcessError) else 'io_error',
+                          returncode=getattr(error, 'returncode', 0),
+                          private_detail=str(error))
+        raise
     data = json.loads(result.stdout)
     # Exclude embedded cover art from the actual video tracks.
     videos = [s for s in data['streams'] if s['codec_type'] == 'video'
@@ -164,6 +119,8 @@ def probe(path):
     # A rotated MOV may store landscape pixels but display as portrait.
     if round(rotation) % 180:
         width, height = height, width
+    app_logging.event('probe_completed', category='probe', level='info',
+                      duration_ms=round((time.monotonic() - started) * 1000))
     return dict(video=video, duration=duration, dimensions=(width, height),
                 format_tags=data.get('format', {}).get('tags', {}),
                 audio=[s for s in data['streams'] if s['codec_type'] == 'audio'])
@@ -232,13 +189,20 @@ def verify_metadata(info):
     tag dictionaries and are not removed or rewritten here.
     """
     if set(info.get('format_tags', {})) - FORMAT_TAGS:
+        app_logging.event('validation_failed', category='probe', level='error',
+                          reason='metadata_tags')
         raise RuntimeError('输出含未允许的描述性元数据，不发布该输出。')
-    for stream in (info['video'], *info['audio']):
+    for index, stream in enumerate((info['video'], *info['audio'])):
         tags = stream.get('tags', {})
         handlers = ('', 'VideoHandler', 'SoundHandler')
         if (set(tags) - STREAM_TAGS
                 or tags.get('handler_name', '') not in handlers
                 or not re.fullmatch(r'[a-z]{3}', tags.get('language', 'und'))):
+            app_logging.event('validation_failed', category='probe', level='error',
+                              reason='metadata_tags', track_index=index,
+                              has_track_name='name' in tags,
+                              handler_generic=tags.get('handler_name', '') in handlers,
+                              private_detail=json.dumps(tags, ensure_ascii=False))
             raise RuntimeError('输出含未允许的轨道元数据，不发布该输出。')
 
 
@@ -255,6 +219,7 @@ def verify(source, path, limit, *, probes=None):
     Cached metadata requires a matching current file signature. Raise
     RuntimeError for invalid output; probe/parse errors propagate.
     """
+    app_logging.event('validation_started', category='probe', level='info')
     output = probe(path) if probes is None else probes.read(path)
     if not 0 < path.stat().st_size < limit:
         raise RuntimeError('输出文件未满足大小限制。')
@@ -276,6 +241,8 @@ def verify(source, path, limit, *, probes=None):
     if len(output['audio']) != len(source['audio']):
         raise RuntimeError('输出音轨数量发生变化，不发布该输出。')
     verify_metadata(output)
+    app_logging.event('validation_completed', category='probe', level='info',
+                      output_bytes=path.stat().st_size)
     return output
 
 
@@ -291,6 +258,9 @@ def publish(temp, source):
     """
     # SMB/exFAT may not support hard links. Exclusive creation also works
     # across volumes and does not replace an existing destination.
+    started = time.monotonic()
+    app_logging.event('publish_started', category='publish',
+                      output_bytes=temp.stat().st_size)
     number = 1
     while True:
         suffix = '_compressed' if number == 1 else f'_compressed_{number}'
@@ -300,6 +270,10 @@ def publish(temp, source):
         except FileExistsError:
             number += 1
             continue
+        except OSError as error:
+            app_logging.event('publish_failed', category='publish', level='error',
+                              reason='io_error', private_detail=str(error))
+            raise
         try:
             with destination, temp.open('rb') as original:
                 shutil.copyfileobj(original, destination, length=1024 * 1024)
@@ -308,8 +282,13 @@ def publish(temp, source):
             with temp.open('rb') as original, output.open('rb') as saved:
                 if hashlib.file_digest(original, 'sha256').digest() != hashlib.file_digest(saved, 'sha256').digest():
                     raise OSError('保存后的文件校验不一致。')
+            app_logging.event('publish_completed', category='publish',
+                              output_bytes=output.stat().st_size,
+                              duration_ms=round((time.monotonic() - started) * 1000))
             return output
-        except BaseException:
+        except BaseException as error:
+            app_logging.event('publish_failed', category='publish', level='error',
+                              reason='io_error', private_detail=str(error))
             # Only remove the new destination that this invocation created.
             try:
                 output.unlink()
@@ -333,6 +312,8 @@ def encoding_workspace():
         yield working
     except BaseException:
         if (working / 'best.mp4').is_file():
+            app_logging.event('recovery_retained', category='publish',
+                              private_detail=str(working / 'best.mp4'))
             print(f'已保留编码结果，可直接复制到源目录，无需重新编码：{working / "best.mp4"}',
                   file=sys.stderr, flush=True)
         else:
@@ -343,35 +324,16 @@ def encoding_workspace():
 
 
 def encode(command, log):
-    """Run HandBrake, append diagnostics, and display encoding progress.
+    """Run HandBrake with concurrent pipe draining and terminal progress."""
+    def progress(line):
+        if 'Encoding:' in line:
+            print('\r' + line.strip()[:160].ljust(100), end='', flush=True)
 
-    Terminate the child when interrupted and raise RuntimeError for a
-    nonzero exit status. The caller owns the candidate output and recovery.
-    """
-    with log.open('a', encoding='utf-8') as handle:
-        handle.write('\n' + shlex.join(command) + '\n')
-        handle.flush()
-        # Stream stderr directly to disk so diagnostics cannot fill a pipe
-        # while stdout is being consumed for progress updates.
-        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=handle,
-                              text=True, bufsize=1) as process:
-            try:
-                for line in process.stdout:
-                    # CLI progress uses CR, which universal-newline mode splits.
-                    if 'Encoding:' in line:
-                        print('\r' + line.strip()[:160].ljust(100), end='', flush=True)
-                code = process.wait()
-            except BaseException:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                raise
-        print()
+    code = app_logging.run_process(command, log, tool='HandBrakeCLI',
+                                   progress=progress)
+    print()
     if code:
-        raise RuntimeError(f'HandBrake 编码失败（{code}）。日志：{log}')
+        raise RuntimeError(f'HandBrake 编码失败（{code}）。诊断任务：{log}')
 
 
 def remux(source, info, output, log):
@@ -399,25 +361,12 @@ def remux(source, info, output, log):
         if audio_retry:
             print('直接封装未成功，重试仅将音频转换为 AAC；视频继续直接复制。', flush=True)
             command = command[:-1] + ['-c:a', 'aac', '-b:a', '128k', command[-1]]
-        with log.open('a', encoding='utf-8') as handle:
-            handle.write('\n' + shlex.join(command) + '\n')
-            handle.flush()
-            with subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT) as process:
-                try:
-                    code = process.wait()
-                except BaseException:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-                    raise
+        code = app_logging.run_process(command, log, tool='ffmpeg')
         if code == 0:
             return
         if not info['audio']:
             break
-    raise RuntimeError(f'FFmpeg 重新封装失败，未发布输出。日志：{log}')
+    raise RuntimeError(f'FFmpeg 重新封装失败，未发布输出。任务编号：{log}')
 
 
 def transcode(source, info, limit, working, log, *, probes=None):
@@ -447,6 +396,8 @@ def transcode(source, info, limit, working, log, *, probes=None):
     candidate = working / 'candidate.mp4'
     previous = None
     for attempt in range(1, 5):
+        app_logging.event('encode_attempt', category='encode', attempt=attempt,
+                          video_kbps=video_kbps, audio_kbps=audio_kbps)
         print(f'第 {attempt} 次编码：视频 {video_kbps} kbps，音频每轨 {audio_kbps} kbps', flush=True)
         # Disable layout names along with source-name passthrough.
         command = [tool('HandBrakeCLI'), '--preset-import-file', str(ROOT / 'preset.json'),
@@ -466,6 +417,8 @@ def transcode(source, info, limit, working, log, *, probes=None):
             command += ['-a', 'none']
         encode(command, log)
         actual = candidate.stat().st_size
+        app_logging.event('encode_candidate', category='encode', attempt=attempt,
+                          output_bytes=actual)
         print(f'实际大小：{actual / 1e6:.3f} MB', flush=True)
         if actual < limit:
             output_info = verify(info, candidate, limit, probes=probes)
@@ -498,7 +451,7 @@ def transcode(source, info, limit, working, log, *, probes=None):
         video_kbps = new_rate
         candidate.unlink(missing_ok=True)
     if not best.exists():
-        raise RuntimeError(f'多次编码后仍超过大小上限，未生成最终文件。日志：{log}')
+        raise RuntimeError(f'多次编码后仍超过大小上限，未生成最终文件。任务编号：{log}')
     return best
 
 
@@ -516,6 +469,8 @@ def process_video(source, limit, log):
     probes = ProbeCache()
     size = source.stat().st_size
     codec = info['video']['codec_name']
+    app_logging.event('input_ready', category='encode', input_bytes=size,
+                      audio_tracks=len(info['audio']))
     print(f'源文件：{source}\n源大小：{size / 1e6:.3f} MB；视频编码：{codec}', flush=True)
     with encoding_workspace() as working:
         best = None
@@ -531,6 +486,8 @@ def process_video(source, limit, log):
                 probes.replace(packed, best)
             else:
                 print('重新封装达到或超过大小上限，自动转入 HandBrake 转码。', flush=True)
+                app_logging.event('remux_oversize', category='encode',
+                                  output_bytes=actual, reason='size')
                 packed.unlink()
         if best is None:
             print('处理方式：HandBrake 限大小转码。', flush=True)
@@ -539,18 +496,19 @@ def process_video(source, limit, log):
         print('正在保存到源目录并校验文件……', flush=True)
         result = publish(best, source)
         print('保存校验通过：文件大小和 SHA-256 一致。', flush=True)
-        print(f'完成：{result}\n大小：{result.stat().st_size / 1e6:.3f} MB\n日志：{log}', flush=True)
+        print(f'完成：{result}\n大小：{result.stat().st_size / 1e6:.3f} MB\n任务编号：{log}', flush=True)
         return result
 
 
 def compress(source, limit):
-    """Clean expired logs and process a file inside a tee-backed task log.
+    """Clean expired files and process an input in a correlated log task.
 
     Record failures, including cancellation, before propagating them to the
     batch handler. Workspace cleanup/recovery is managed independently.
     """
     removed = clean_logs()
     with task_log() as log:
+        app_logging.event('logs_pruned', category='app', level='info', removed=removed)
         print(f'已清理超过 7 天的日志：{removed} 份。', flush=True)
         try:
             return process_video(source, limit, log)
@@ -596,11 +554,19 @@ def main():
         return 0
     if args.limit_bytes <= 0:
         parser.error('size limit must be positive')
+    with app_logging.batch_scope(ROOT) as batch:
+        batch.event('batch_started', files=len(dict.fromkeys(args.files)))
+        return run_batch(args, batch)
+
+
+def run_batch(args, batch):
+    """Serialize media work and correlate its separate update task."""
     failures = 0
     with (ROOT / '.queue.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            batch.event('queue_wait', reason='queue_busy')
             print('已有压缩任务，正在排队等待……', flush=True)
             fcntl.flock(lock, fcntl.LOCK_EX)
         for filename in dict.fromkeys(args.files):
@@ -613,7 +579,10 @@ def main():
         try:
             cli_update.check_for_updates(Path(tool('HandBrakeCLI')), ROOT)
         except (OSError, RuntimeError) as error:
+            app_logging.event('update_failed', category='update', level='error',
+                              status='failed', private_detail=str(error))
             print(f'HandBrakeCLI 更新检查未完成：{error}。已完成的视频不受影响。', file=sys.stderr)
+    batch.event('batch_completed', failures=failures)
     print(f'\n全部处理结束，失败 {failures} 个。', flush=True)
     return int(bool(failures))
 
